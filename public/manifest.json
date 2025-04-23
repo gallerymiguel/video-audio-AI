@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Chat Tab Extension",
+  "description": "Send current tab content to ChatGPT",
+  "version": "1.0",
+  "permissions": ["tabs", "scripting", "activeTab", "notifications"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": ["https://chatgpt.com/*"]
+}

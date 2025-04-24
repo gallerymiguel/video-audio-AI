@@ -3,7 +3,7 @@
   "name": "Chat Tab Extension",
   "description": "Send current tab content to ChatGPT",
   "version": "1.0",
-  "permissions": ["tabs", "scripting", "activeTab", "notifications"],
+  "permissions": ["tabs", "scripting", "activeTab", "notifications", "storage"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

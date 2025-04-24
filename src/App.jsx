@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 function App() {
   const [chatTabs, setChatTabs] = useState([]);
   const [selectedTabId, setSelectedTabId] = useState(null);
+  const [status, setStatus] = useState("");
 
   useEffect(() => {
     // Fetch ChatGPT tabs
@@ -22,7 +23,7 @@ function App() {
       });
     }
   }, []);
-
+  // Fetch ChatGPT tabs and selected tab ID
   const handleSelect = (tabId) => {
     setSelectedTabId(tabId);
     if (chrome?.storage?.local) {
@@ -30,17 +31,16 @@ function App() {
     }
   };
 
+  // Send message to ChatGPT tab
   const handleSend = () => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const tab = tabs[0];
-      if (tab.url.includes("youtube.com/watch")) {
-        const message = `Summarize this YouTube video:\n${tab.title}\n${tab.url}`;
-        chrome.runtime.sendMessage({
-          type: "SEND_TO_CHATGPT",
-          payload: message,
-        });
+    setStatus("Sending transcript...");
+
+    chrome.runtime.sendMessage({ type: "SEND_TO_CHATGPT" }, (response) => {
+      if (chrome.runtime.lastError) {
+        setStatus("❌ Error: Unable to communicate with background.");
       } else {
-        alert("Please open a YouTube video first.");
+        setStatus("✅ Transcript sent to ChatGPT!");
+        setTimeout(() => setStatus(""), 4000); // clear after 4s
       }
     });
   };
@@ -67,6 +67,9 @@ function App() {
           {tab.title}
         </button>
       ))}
+      {status && (
+        <p style={{ marginBottom: "10px", fontWeight: "bold" }}>{status}</p>
+      )}
 
       <button onClick={handleSend} style={{ marginTop: "10px" }}>
         Send YouTube Summary

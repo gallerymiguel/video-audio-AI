@@ -5,31 +5,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.log("❌ No active tabs found.");
         return;
       }
-    
+
       const youtubeTab = tabs[0];
       console.log("✅ tabs[0]:", youtubeTab);
-    
+
       if (!youtubeTab.id || !youtubeTab.url) {
         console.log("❌ youtubeTab.id or url is missing.");
         return;
       }
-    
+
       console.log("✅ Detected tab URL:", youtubeTab.url);
-    
+
       if (!youtubeTab.url.match(/youtube\.com\/watch\?v=/)) {
         console.log("❌ Not on a valid YouTube video page.");
         return;
       }
-    
-      chrome.scripting.executeScript({
-        target: { tabId: youtubeTab.id },
-        files: ["content.js"],
-      });
 
-      sendResponse({ success: true }); // ✅ Tell the popup it was handled
+      // 🧠 First, inject the time range into the page
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: youtubeTab.id },
+          func: (start, end) => {
+            window.transcriptSliceRange = { start, end };
+          },
+          args: [request.startTime, request.endTime],
+        },
+        () => {
+          // ✅ Then inject content.js after the time range is set
+          chrome.scripting.executeScript({
+            target: { tabId: youtubeTab.id },
+            files: ["content.js"],
+          });
+        }
+      );
     });
 
-    // Return true to indicate async use of sendResponse
     return true;
   }
 
@@ -40,7 +50,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
 
-      const prompt = `Summarize this YouTube transcript:\n\n${request.transcript}`;
+      const maxLength = 3000;
+      const transcript = request.transcript.slice(0, maxLength);
+      const prompt = `Summarize this YouTube transcript (length: ${transcript.length} characters):\n\n${transcript}`;
 
       chrome.scripting.executeScript({
         target: { tabId: selectedChatTabId },
@@ -55,6 +67,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         },
         args: [prompt],
       });
+      // ✅ Tell popup that everything is done
+      chrome.runtime.sendMessage({
+        type: "YOUTUBE_TRANSCRIPT_DONE",
+        charCount: transcript.length,
+      });
+
+      sendResponse({ charCount: transcript.length });
     });
   }
 });

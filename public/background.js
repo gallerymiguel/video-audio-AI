@@ -1,4 +1,6 @@
+// ✅ Clean, working background.js for your Chrome Extension
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // ✅ Step 1: Handle YouTube Transcript Fetching
   if (request.type === "SEND_TO_CHATGPT") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs || tabs.length === 0) {
@@ -7,7 +9,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
 
       const youtubeTab = tabs[0];
-      console.log("✅ tabs[0]:", youtubeTab);
 
       if (!youtubeTab.id || !youtubeTab.url) {
         console.log("❌ youtubeTab.id or url is missing.");
@@ -21,17 +22,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
 
-      // 🧠 First, inject the time range into the page
+      // Inject the time range into the page BEFORE injecting content.js
       chrome.scripting.executeScript(
         {
           target: { tabId: youtubeTab.id },
           func: (start, end) => {
             window.transcriptSliceRange = { start, end };
           },
-          args: [request.startTime, request.endTime],
+          args: [request.startTime || "00:00", request.endTime || "99:59"],
         },
         () => {
-          // ✅ Then inject content.js after the time range is set
+          // Then inject the content script
           chrome.scripting.executeScript({
             target: { tabId: youtubeTab.id },
             files: ["content.js"],
@@ -40,10 +41,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       );
     });
 
-    return true;
+    return true; // Keep the message channel open for async
   }
 
+  // ✅ Step 2: Forward the transcript to the popup
+  if (request.type === "TRANSCRIPT_FETCHED") {
+    chrome.runtime.sendMessage({
+      type: "TRANSCRIPT_READY",
+      transcript: request.transcript,
+    });
+  }
+
+  // ✅ Step 3: Send the transcript to ChatGPT
   if (request.type === "YOUTUBE_TRANSCRIPT") {
+    console.log("📥 YOUTUBE_TRANSCRIPT received in background.js");
     chrome.storage.local.get("selectedChatTabId", ({ selectedChatTabId }) => {
       if (!selectedChatTabId) {
         console.log("❌ No ChatGPT tab selected.");
@@ -57,9 +68,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       chrome.scripting.executeScript({
         target: { tabId: selectedChatTabId },
         func: (msg) => {
-          const editor = document.querySelector(
-            '[contenteditable="true"].ProseMirror'
-          );
+          const editor = document.querySelector('[contenteditable="true"].ProseMirror');
           if (editor) {
             editor.focus();
             document.execCommand("insertText", false, msg);
@@ -67,13 +76,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         },
         args: [prompt],
       });
-      // ✅ Tell popup that everything is done
+
       chrome.runtime.sendMessage({
         type: "YOUTUBE_TRANSCRIPT_DONE",
         charCount: transcript.length,
       });
-
-      sendResponse({ charCount: transcript.length });
     });
   }
 });

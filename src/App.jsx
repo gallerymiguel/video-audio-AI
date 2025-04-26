@@ -20,6 +20,18 @@ function parseTimeToSeconds(str) {
   return minutes * 60 + seconds;
 }
 
+const fadeStyleTag = document.createElement("style");
+fadeStyleTag.textContent = `
+.fade-in-out {
+  opacity: 0;
+  transition: opacity 0.5s ease-in-out;
+}
+.fade-in-out.show {
+  opacity: 1;
+}
+`;
+document.head.appendChild(fadeStyleTag);
+
 function App() {
   const [chatTabs, setChatTabs] = useState([]);
   const [selectedTabId, setSelectedTabId] = useState(null);
@@ -33,7 +45,12 @@ function App() {
   const [videoDuration, setVideoDuration] = useState(null);
   const [sliderStart, setSliderStart] = useState(0);
   const [sliderEnd, setSliderEnd] = useState(0);
-  
+  const [lastUsedStart, setLastUsedStart] = useState(null);
+  const [lastUsedEnd, setLastUsedEnd] = useState(null);
+  // right here last
+  const [waitingForVideo, setWaitingForVideo] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const tabId = tabs[0]?.id;
@@ -41,6 +58,8 @@ function App() {
 
       // Try repeatedly for up to 1.5s until video is ready
       const tryGetDuration = (attempt = 0) => {
+        setWaitingForVideo(true); // 🟡 START waiting when trying to fetch
+
         chrome.scripting.executeScript(
           {
             target: { tabId },
@@ -63,11 +82,14 @@ function App() {
               setSliderEnd(duration);
               setStartTime("00:00");
               setEndTime(formattedEnd);
-            } else if (attempt < 10) {
-              // Retry every 150ms up to ~1.5s
+
+              setWaitingForVideo(false); // 🟢 STOP waiting after successful fetch
+            } else if (attempt < 35) {
               setTimeout(() => tryGetDuration(attempt + 1), 150);
             } else {
-              console.warn("❌ Could not fetch video duration.");
+              console.warn("❌ Could not fetch video duration after retries.");
+              setWaitingForVideo(false); // 🛑 Also stop waiting if totally fail
+              setVideoError(true); // 🔥 Set the error flag
             }
           }
         );
@@ -79,26 +101,39 @@ function App() {
 
   useEffect(() => {
     const listener = (message, sender, sendResponse) => {
-      // ✅ THIS is where message is valid
       if (message.type === "TRANSCRIPT_READY") {
-        console.log(
-          "✅ Transcript received:",
-          message.transcript.length,
-          "chars"
-        );
-        clearTimeout(window._transcriptTimeout);
-        setLoading(false);
-        setRawTranscript(message.transcript);
-        setCharCount(message.transcript.length);
-        setStatus("✅ Transcript fetched! Ready to send.");
+        if (typeof message.transcript === "string") {
+          console.log(
+            "✅ Transcript received:",
+            message.transcript.length,
+            "chars"
+          );
+          clearTimeout(window._transcriptTimeout);
+          setLoading(false);
+          setRawTranscript(message.transcript);
+          setCharCount(message.transcript.length);
+
+          if (message.transcript.length > 3000) {
+            setStatus("⚠️ Transcript too long! Try reducing time range.");
+          } else {
+            setStatus("✅ Transcript fetched! Ready to send.");
+          }
+        } else {
+          console.log("❌ Invalid transcript received:", message.transcript);
+          setStatus("❌ Failed to fetch transcript.");
+          setLoading(false);
+        }
       }
-      if (message.transcript.length > 3000) {
-        setStatus("⚠️ Transcript too long! Try reducing time range.");
-      }
+
       if (message.type === "YOUTUBE_TRANSCRIPT_DONE") {
+        console.log("✅ Final send complete, char count:", message.charCount);
         setLoading(false);
         setStatus("✅ Transcript sent to ChatGPT!");
         setTimeout(() => setStatus(""), 4000);
+
+        if (typeof message.charCount === "number") {
+          setCharCount(message.charCount);
+        }
 
         chrome.tabs.query({}, (tabs) => {
           const matches = tabs.filter(
@@ -254,10 +289,13 @@ function App() {
 
           // ✅ Finally send to background script
           console.log("📤 Sending SEND_TO_CHATGPT from Convert button");
+          setLastUsedStart(startTime);
+          setLastUsedEnd(endTime);
           chrome.runtime.sendMessage({
             type: "SEND_TO_CHATGPT",
             startTime,
             endTime,
+            selectedChatTabId: selectedTabId,
           });
         }
       );
@@ -266,7 +304,39 @@ function App() {
 
   return (
     <div style={{ padding: "10px" }}>
+      <div className={`fade-in-out ${videoError ? "show" : ""}`}>
+        {videoError && (
+          <p
+            style={{
+              fontSize: "12px",
+              color: "red",
+              fontWeight: "bold",
+              textAlign: "center",
+              marginBottom: "10px",
+            }}
+          >
+            ❌ Couldn't detect video. Please refresh the YouTube page and try
+            again.
+          </p>
+        )}
+      </div>
+
       <h4>Select ChatGPT Tab</h4>
+      <div className={`fade-in-out ${waitingForVideo ? "show" : ""}`}>
+        {waitingForVideo && (
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#666",
+              marginBottom: "10px",
+              textAlign: "center",
+            }}
+          >
+            ⏳ Waiting for video to load...
+          </p>
+        )}
+      </div>
+
       {chatTabs.map((tab) => (
         <button
           key={tab.id}
@@ -376,16 +446,19 @@ function App() {
         </div>
       )}
 
-      {rawTranscript.length > 0 && (
-        <p
-          style={{
-            fontSize: "12px",
-            marginTop: "4px",
-            color: charCount > 3000 ? "red" : "#666",
-          }}
-        >
-          Transcript length: {charCount} characters
-        </p>
+      {typeof rawTranscript === "string" && rawTranscript.length > 0 && (
+        <div style={{ marginTop: "10px", marginBottom: "10px" }}>
+          <p
+            style={{
+              fontSize: "12px",
+              marginBottom: "2px",
+              color: charCount > 3000 ? "red" : "#666",
+              fontWeight: charCount > 3000 ? "bold" : "normal",
+            }}
+          >
+            Transcript length: {charCount} characters
+          </p>
+        </div>
       )}
 
       {timestampError && (
@@ -410,20 +483,21 @@ function App() {
 
       {rawTranscript.length > 0 && (
         <>
-          <p style={{ fontSize: "12px", marginBottom: "6px" }}>
-            Transcript length: {charCount} characters
-          </p>
+          {lastUsedStart && lastUsedEnd && (
+            <p style={{ fontSize: "12px", marginBottom: "6px", color: "#555" }}>
+              From {lastUsedStart} to {lastUsedEnd}
+            </p>
+          )}
 
           <button
-            disabled={!rawTranscript}
+            disabled={!rawTranscript || rawTranscript.startsWith("❌")}
             onClick={() => {
-              console.log(
-                "📤 Sending YOUTUBE_TRANSCRIPT from Send to ChatGPT button"
-              );
               chrome.runtime.sendMessage({
                 type: "YOUTUBE_TRANSCRIPT",
                 transcript: rawTranscript,
+                selectedChatTabId: selectedTabId, // 🛠 ADD THIS
               });
+
               setStatus("Sending to ChatGPT...");
               setLoading(true);
             }}

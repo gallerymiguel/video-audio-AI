@@ -1,27 +1,19 @@
-// ✅ Clean, working background.js for your Chrome Extension
+// ✅ Clean, working background.js
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // ✅ Step 1: Handle YouTube or Instagram Fetching
   if (request.type === "SEND_TO_CHATGPT") {
     console.log("🛎️ Received SEND_TO_CHATGPT message:", request);
 
-    chrome.tabs.query({}, (tabs) => {
-      // <--- query ALL tabs now
-      console.log("📋 chrome.tabs.query result:", tabs);
-
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs || tabs.length === 0) {
         console.log("❌ No active tabs found.");
         return;
       }
 
       const activeTab = tabs[0];
-      console.log("🔎 Active tab object:", activeTab);
-
       if (!activeTab.id || !activeTab.url) {
         console.log("❌ activeTab.id or activeTab.url missing");
         return;
       }
-
-      console.log("✅ Detected tab URL:", activeTab.url);
 
       const isYouTubeVideo = activeTab.url.match(
         /youtube\.com\/(watch\?v=|shorts\/)/
@@ -30,16 +22,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         /instagram\.com\/(reels|reel|p)\//
       );
 
-      console.log("🎯 isYouTubeVideo:", !!isYouTubeVideo);
-      console.log("🎯 isInstagram:", !!isInstagram);
-
       if (!isYouTubeVideo && !isInstagram) {
         console.log("❌ Not a valid YouTube or Instagram page.");
         return;
       }
 
       if (isYouTubeVideo) {
-        console.log("📺 This is a YouTube video, injecting time range...");
         chrome.scripting.executeScript(
           {
             target: { tabId: activeTab.id },
@@ -56,9 +44,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         );
       } else if (isInstagram) {
-        console.log(
-          "📸 This is an Instagram Reel/Post, injecting content.js..."
-        );
         chrome.scripting.executeScript({
           target: { tabId: activeTab.id },
           files: ["content.js"],
@@ -69,20 +54,57 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  // ✅ Step 2: Forward the transcript to the popup
+  // ✅ After fetching, forward to popup to show "Send to ChatGPT" button
   if (request.type === "TRANSCRIPT_FETCHED") {
-    chrome.runtime.sendMessage({
-      type: "TRANSCRIPT_READY",
-      transcript: request.transcript,
+    console.log("📥 TRANSCRIPT_FETCHED received...");
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const activeTab = tabs[0];
+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: activeTab.id },
+          func: () => ({
+            isAudioCaptureInProgress: window.isAudioCaptureInProgress,
+            isInstagramScraping: window.isInstagramScraping,
+          }),
+        },
+        (results) => {
+          const flags = results?.[0]?.result;
+
+          if (!flags) {
+            console.log("❌ Failed to get flags from tab.");
+            return;
+          }
+
+          const { isAudioCaptureInProgress, isInstagramScraping } = flags;
+
+          if (isInstagramScraping) {
+            console.log(
+              "⚡ Detected Instagram scraping, ignoring early caption."
+            );
+            return;
+          }
+
+          if (isAudioCaptureInProgress) {
+            console.log("⚡ Still recording audio, ignoring transcript.");
+            return;
+          }
+
+          console.log("✅ Final transcript ready, sending to popup.");
+          chrome.runtime.sendMessage({
+            type: "TRANSCRIPT_READY",
+            transcript: request.transcript,
+          });
+        }
+      );
     });
   }
 
-  // ✅ Step 3: Send the transcript to ChatGPT
-  if (request.type === "YOUTUBE_TRANSCRIPT") {
-    console.log("📥 YOUTUBE_TRANSCRIPT received in background.js");
+  if (request.type === "SEND_TRANSCRIPT_TO_CHATGPT") {
+    console.log("📤 SEND_TRANSCRIPT_TO_CHATGPT received");
 
-    const selectedChatTabId = request.selectedChatTabId; // ✅ pull it from request
-
+    const selectedChatTabId = request.selectedChatTabId;
     if (!selectedChatTabId) {
       console.log("❌ No ChatGPT tab selected.");
       return;
@@ -90,7 +112,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     const maxLength = 3000;
     const transcript = request.transcript.slice(0, maxLength);
-    const prompt = `Summarize this video transcript (length: ${transcript.length} characters):\n\n${transcript}`;
+    const prompt = `Summarize this video or audio transcript (length: ${transcript.length} characters):\n\n${transcript}`;
 
     chrome.scripting.executeScript({
       target: { tabId: selectedChatTabId },
@@ -103,7 +125,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             editor.focus();
             document.execCommand("insertText", false, msg);
           } else {
-            setTimeout(waitForEditor, 300); // try again every 300ms until it finds it
+            setTimeout(waitForEditor, 300);
           }
         };
         waitForEditor();

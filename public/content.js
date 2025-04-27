@@ -144,16 +144,106 @@
       return "❌ Failed to extract Instagram caption.";
     }
   }
+  async function captureAudioFromVideo(durationSeconds = 5) {
+    try {
+      console.log("🎙️ Starting to capture audio from video...");
+
+      const video = document.querySelector("video");
+      if (!video) {
+        console.log("❌ No video element found for recording.");
+        return;
+      }
+
+      const stream = video.captureStream();
+      const audioTracks = stream.getAudioTracks();
+      if (!audioTracks.length) {
+        console.log("❌ No audio tracks available in stream.");
+        return;
+      }
+
+      const mediaRecorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        console.log("✅ Captured audio blob:", blob);
+
+        console.log("🛰️ Sending audio to local server...");
+
+        const formData = new FormData();
+        const file = new File([blob], "audio.webm", { type: "audio/webm" });
+        formData.append("audio", file);
+
+        try {
+          const response = await fetch("http://localhost:3000/transcribe", {
+            method: "POST",
+            body: formData,
+          });
+
+          const data = await response.json();
+
+          if (data && data.transcript) {
+            window.isInstagramScraping = false;
+
+            console.log(
+              "✅ Transcription from server:",
+              data.transcript.slice(0, 100),
+              "..."
+            );
+
+            chrome.runtime.sendMessage({
+              type: "TRANSCRIPT_FETCHED",
+              transcript: data.transcript, // 🛠️ Send real text to popup
+            });
+          } else {
+            console.error("❌ Failed to get text from server:", data);
+            chrome.runtime.sendMessage({
+              type: "TRANSCRIPT_FETCHED",
+              transcript: "❌ Failed to get text from server.",
+            });
+          }
+        } catch (error) {
+          console.error("❌ Error during fetch:", error);
+          chrome.runtime.sendMessage({
+            type: "TRANSCRIPT_FETCHED",
+            transcript: "❌ Error during transcription request.",
+          });
+        }
+      };
+
+      mediaRecorder.start();
+      console.log("▶️ Recording started...");
+
+      setTimeout(() => {
+        mediaRecorder.stop();
+        console.log("⏹️ Recording stopped after", durationSeconds, "seconds");
+      }, durationSeconds * 1000);
+    } catch (err) {
+      console.error("❌ Error during audio capture:", err);
+    }
+  }
 
   // 🔥 Now smartly choose based on site:
   if (isInstagram) {
     console.log("📸 Instagram Reel or Post detected.");
+    
+    window.isInstagramScraping = true;
+
     getInstagramCaptions().then((transcript) => {
       console.log(
         "🚀 Sending TRANSCRIPT_FETCHED to popup:",
         transcript.slice(0, 100)
       );
-      chrome.runtime.sendMessage({ type: "TRANSCRIPT_FETCHED", transcript }); // Send the transcript to the background script
+      chrome.runtime.sendMessage({ type: "TRANSCRIPT_FETCHED", transcript });
+
+      // 🆕 After sending the transcript, also capture audio
+      captureAudioFromVideo(5); // 5 seconds for now
     });
   } else if (isYouTube) {
     console.log("🎥 YouTube Video detected.");

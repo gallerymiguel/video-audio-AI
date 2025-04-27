@@ -36,8 +36,8 @@ function App() {
   const [chatTabs, setChatTabs] = useState([]);
   const [selectedTabId, setSelectedTabId] = useState(null);
   const [status, setStatus] = useState("");
-  const [charCount, setCharCount] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [charCount, setCharCount] = useState(null);
   const [startTime, setStartTime] = useState("00:00");
   const [endTime, setEndTime] = useState("00:00");
   const [rawTranscript, setRawTranscript] = useState("");
@@ -145,7 +145,6 @@ function App() {
     };
 
     chrome.runtime.onMessage.addListener(listener);
-
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, []);
 
@@ -475,7 +474,7 @@ function App() {
       )}
 
       <button onClick={handleSend} style={{ marginTop: "10px" }}>
-        Convert YouTube Transcript
+        Convert Video Transcript
       </button>
       <p style={{ fontSize: "12px", color: "#888", marginTop: "4px" }}>
         This will fetch the transcript based on your selected time range.
@@ -493,9 +492,9 @@ function App() {
             disabled={!rawTranscript || rawTranscript.startsWith("❌")}
             onClick={() => {
               chrome.runtime.sendMessage({
-                type: "YOUTUBE_TRANSCRIPT",
+                type: "SEND_TRANSCRIPT_TO_CHATGPT",
                 transcript: rawTranscript,
-                selectedChatTabId: selectedTabId, // 🛠 ADD THIS
+                selectedChatTabId: selectedTabId,
               });
 
               setStatus("Sending to ChatGPT...");

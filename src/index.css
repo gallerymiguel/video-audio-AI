@@ -1,4 +1,93 @@
-:root {
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- Base Reset --- */
+input[type='range'] {
+  @apply appearance-none bg-transparent w-full;
+}
+
+/* --- Slider Track --- */
+input[type='range']::-webkit-slider-runnable-track {
+  @apply h-2 bg-gray-300 rounded-full;
+}
+input[type='range']::-moz-range-track {
+  @apply h-2 bg-gray-300 rounded-full;
+}
+
+/* --- Slider Thumb --- */
+input[type='range']::-webkit-slider-thumb {
+  @apply bg-green-500 h-4 w-4 rounded-full cursor-pointer transition duration-200 ease-in-out -mt-1;
+  appearance: none;
+}
+input[type='range']::-moz-range-thumb {
+  @apply bg-green-500 h-4 w-4 rounded-full cursor-pointer transition duration-200 ease-in-out;
+}
+
+/* --- Hover Effects --- */
+input[type='range']::-webkit-slider-thumb:hover {
+  @apply scale-110 shadow-md;
+}
+input[type='range']::-moz-range-thumb:hover {
+  @apply scale-110 shadow-md;
+}
+
+@layer utilities {
+  .spin-smooth {
+    animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+}
+
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  width: 16px;
+  background: #3b82f6; /* Tailwind blue-500 */
+  border-radius: 9999px;
+  cursor: pointer;
+  position: relative;
+  z-index: 10;
+}
+
+input[type="range"]::-moz-range-thumb {
+  height: 16px;
+  width: 16px;
+  background: #3b82f6;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  position: relative;
+  z-index: 10;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 8px;
+  border-radius: 4px;
+}
+
+input[type="range"]::-moz-range-track {
+  background: transparent;
+  height: 8px;
+  border-radius: 4px;
+}
+
+body {
+  @apply font-sans;
+}
+
+/* :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
@@ -65,4 +154,4 @@ button:focus-visible {
   button {
     background-color: #f9f9f9;
   }
-}
+} */

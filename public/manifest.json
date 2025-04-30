@@ -14,5 +14,8 @@
   "background": {
     "service_worker": "background.js"
   },
-  "host_permissions": ["https://chatgpt.com/*"]
+  "host_permissions": ["https://chatgpt.com/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src *"
+  }
 }

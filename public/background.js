@@ -59,7 +59,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log("📥 TRANSCRIPT_FETCHED received...");
 
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const activeTab = tabs[0];
+      const activeTab = tabs?.[0];
 
       chrome.scripting.executeScript(
         {

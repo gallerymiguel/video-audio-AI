@@ -1,4 +1,11 @@
 import { useState, useEffect } from "react";
+import { useSelector, useDispatch } from "react-redux";
+import {
+  setStatus,
+  setLoading,
+  setTranscript,
+  clearTranscript,
+} from "./transcriptSlice";
 
 const styleTag = document.createElement("style");
 styleTag.textContent = `
@@ -33,21 +40,23 @@ fadeStyleTag.textContent = `
 document.head.appendChild(fadeStyleTag);
 
 function App() {
+  const dispatch = useDispatch();
+  const status = useSelector((state) => state.transcript.status);
+  const loading = useSelector((state) => state.transcript.loading);
+  const rawTranscript = useSelector((state) => state.transcript.transcript);
+  const charCount = useSelector((state) => state.transcript.charCount);
+
   const [chatTabs, setChatTabs] = useState([]);
   const [selectedTabId, setSelectedTabId] = useState(null);
-  const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [charCount, setCharCount] = useState(null);
   const [startTime, setStartTime] = useState("00:00");
   const [endTime, setEndTime] = useState("00:00");
-  const [rawTranscript, setRawTranscript] = useState("");
   const [timestampError, setTimestampError] = useState("");
   const [videoDuration, setVideoDuration] = useState(null);
   const [sliderStart, setSliderStart] = useState(0);
   const [sliderEnd, setSliderEnd] = useState(0);
   const [lastUsedStart, setLastUsedStart] = useState(null);
   const [lastUsedEnd, setLastUsedEnd] = useState(null);
-  // right here last
+  const [showSettings, setShowSettings] = useState(false);
   const [waitingForVideo, setWaitingForVideo] = useState(false);
   const [videoError, setVideoError] = useState(false);
 
@@ -109,31 +118,28 @@ function App() {
             "chars"
           );
           clearTimeout(window._transcriptTimeout);
-          setLoading(false);
-          setRawTranscript(message.transcript);
-          setCharCount(message.transcript.length);
+          dispatch(setLoading(false));
+          dispatch(setTranscript(message.transcript));
 
           if (message.transcript.length > 3000) {
-            setStatus("⚠️ Transcript too long! Try reducing time range.");
+            dispatch(
+              setStatus("⚠️ Transcript too long! Try reducing time range.")
+            );
           } else {
-            setStatus("✅ Transcript fetched! Ready to send.");
+            dispatch(setStatus("✅ Transcript fetched! Ready to send."));
           }
         } else {
           console.log("❌ Invalid transcript received:", message.transcript);
-          setStatus("❌ Failed to fetch transcript.");
-          setLoading(false);
+          dispatch(setStatus("❌ Failed to fetch transcript."));
+          dispatch(setLoading(false));
         }
       }
 
       if (message.type === "YOUTUBE_TRANSCRIPT_DONE") {
         console.log("✅ Final send complete, char count:", message.charCount);
-        setLoading(false);
-        setStatus("✅ Transcript sent to ChatGPT!");
-        setTimeout(() => setStatus(""), 4000);
-
-        if (typeof message.charCount === "number") {
-          setCharCount(message.charCount);
-        }
+        dispatch(setLoading(false));
+        dispatch(setStatus("✅ Transcript sent to ChatGPT!"));
+        setTimeout(() => dispatch(setStatus("")), 4000);
 
         chrome.tabs.query({}, (tabs) => {
           const matches = tabs.filter(
@@ -190,14 +196,16 @@ function App() {
 
   // Send message to ChatGPT tab
   const handleSend = () => {
-    setStatus("Fetching transcript...");
-    setLoading(true);
+    dispatch(setStatus("Fetching transcript..."));
+    dispatch(setLoading(true));
 
     // Timeout fallback
     window._transcriptTimeout = setTimeout(() => {
-      setLoading(false);
-      setStatus(
-        "❌ No response. Try refreshing YouTube or re-selecting a tab."
+      dispatch(setLoading(false));
+      dispatch(
+        setStatus(
+          "❌ No response. Try refreshing YouTube or re-selecting a tab."
+        )
       );
     }, 10000);
 
@@ -205,7 +213,7 @@ function App() {
     const isValidTime = (str) => /^(\d{1,2}):([0-5]?\d)$/.test(str);
     if (!isValidTime(startTime) || !isValidTime(endTime)) {
       setTimestampError("❌ Please enter timestamps in mm:ss format.");
-      setLoading(false);
+      dispatch(setLoading(false));
       return;
     }
 
@@ -222,7 +230,7 @@ function App() {
 
     if (start >= end) {
       setTimestampError("❌ Start time must be before end time.");
-      setLoading(false);
+      dispatch(setLoading(false));
       return;
     }
 
@@ -231,7 +239,7 @@ function App() {
       const tabId = tabs[0]?.id;
       if (!tabId) {
         setTimestampError("❌ Could not find active YouTube tab.");
-        setLoading(false);
+        dispatch(setLoading(false));
         return;
       }
 
@@ -250,7 +258,7 @@ function App() {
             setTimestampError(
               "❌ One or both timestamps exceed the video length."
             );
-            setLoading(false);
+            dispatch(setLoading(false));
             return;
           }
 
@@ -276,7 +284,7 @@ function App() {
             setTimestampError(
               "❌ One or both timestamps exceed the video length."
             );
-            setLoading(false);
+            dispatch(setLoading(false));
             return;
           }
           // ✅ Store video data and update sliders
@@ -302,7 +310,7 @@ function App() {
   };
 
   return (
-    <div style={{ padding: "10px" }}>
+    <div className="w-[320px] h-[500px] bg-gray-100 p-4">
       <div className={`fade-in-out ${videoError ? "show" : ""}`}>
         {videoError && (
           <p
@@ -334,23 +342,26 @@ function App() {
             ⏳ Waiting for video to load...
           </p>
         )}
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className="absolute top-3 right-3 p-1 rounded-full bg-white shadow hover:shadow-md transition"
+          title="Settings"
+        >
+          <span role="img" aria-label="Settings" className="text-xl">
+            ⚙️
+          </span>
+        </button>
       </div>
 
       {chatTabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => handleSelect(tab.id)}
-          style={{
-            width: "100%",
-            padding: "8px",
-            marginBottom: "6px",
-            backgroundColor: selectedTabId === tab.id ? "#4caf50" : "#f0f0f0",
-            color: selectedTabId === tab.id ? "white" : "black",
-            border: "none",
-            borderRadius: "5px",
-            cursor: "pointer",
-            fontWeight: "bold",
-          }}
+          className={`w-full py-2 px-4 mb-3 ${
+            selectedTabId === tab.id
+              ? "bg-green-500 text-white"
+              : "bg-gray-300 text-black"
+          } font-bold rounded-lg shadow-md hover:bg-green-600 transition-all duration-200`}
         >
           {tab.title}
         </button>
@@ -358,90 +369,108 @@ function App() {
       {status && (
         <p style={{ marginBottom: "10px", fontWeight: "bold" }}>{status}</p>
       )}
+
       {loading && (
-        <div style={{ marginBottom: "10px", textAlign: "center" }}>
-          <div
-            className="loader"
-            style={{
-              width: "24px",
-              height: "24px",
-              border: "4px solid #ccc",
-              borderTop: "4px solid #4caf50",
-              borderRadius: "50%",
-              animation: "spin 1s linear infinite",
-              margin: "0 auto",
-            }}
-          ></div>
-          <p style={{ fontSize: "12px", marginTop: "4px" }}>
-            Fetching transcript…
+        <div className="flex flex-col items-center justify-center mt-6 space-y-2">
+          <div className="relative drop-shadow-[0_0_6px_rgba(34,197,94,0.7)]">
+            <div className="w-8 h-8 border-[3px] border-t-green-500 border-b-green-500 border-l-gray-300 border-r-gray-300 rounded-full spin-smooth" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_6px_rgba(34,197,94,0.8)]" />
+            </div>
+          </div>
+
+          <p className="text-sm text-gray-700 font-medium tracking-wide animate-pulse">
+            Transcribing audio, please wait…
           </p>
         </div>
       )}
-      <div style={{ marginBottom: "10px" }}>
-        <label>
-          Start Time (mm:ss):
+
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div>
+          <label className="block text-sm font-semibold mb-1">Start Time</label>
           <input
             type="text"
             value={startTime}
             onChange={(e) => setStartTime(e.target.value)}
             placeholder="e.g., 02:15"
-            style={{ width: "80px", marginLeft: "10px" }}
+            className="border border-gray-300 rounded-lg p-2 w-full focus:outline-none focus:ring-2 focus:ring-green-400 transition-all duration-200"
           />
-        </label>
-      </div>
-
-      <div style={{ marginBottom: "10px" }}>
-        <label>
-          End Time (mm:ss):
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-1">End Time</label>
           <input
             type="text"
             value={endTime}
             onChange={(e) => setEndTime(e.target.value)}
             placeholder="e.g., 05:45"
-            style={{ width: "80px", marginLeft: "14px" }}
+            className="border border-gray-300 rounded-lg p-2 w-full focus:outline-none focus:ring-2 focus:ring-green-400 transition-all duration-200"
           />
-        </label>
+        </div>
       </div>
 
       {videoDuration && (
-        <div style={{ margin: "10px 0" }}>
-          <p style={{ fontSize: "12px" }}>
+        <div className="my-4 space-y-2">
+          <p className="text-sm text-gray-600">
             Start: {Math.floor(sliderStart / 60)}:
-            {String(sliderStart % 60).padStart(2, "0")}
-            {"  "}→{"  "}
-            End: {Math.floor(sliderEnd / 60)}:
+            {String(sliderStart % 60).padStart(2, "0")} → End:{" "}
+            {Math.floor(sliderEnd / 60)}:
             {String(sliderEnd % 60).padStart(2, "0")}
           </p>
-          <input
-            type="range"
-            min={0}
-            max={Math.floor(videoDuration)}
-            value={sliderStart}
-            onChange={(e) => {
-              const val = Number(e.target.value);
-              if (val < sliderEnd) {
-                setSliderStart(val);
-                setStartTime(
-                  `${Math.floor(val / 60)}:${String(val % 60).padStart(2, "0")}`
-                );
-              }
+
+          <div
+            className="relative h-2 rounded bg-gray-200"
+            style={{
+              background: `linear-gradient(
+          to right,
+          #22c55e ${Math.floor((sliderStart / videoDuration) * 100)}%,
+          #e5e7eb ${Math.floor((sliderStart / videoDuration) * 100)}%,
+          #e5e7eb ${Math.floor((sliderEnd / videoDuration) * 100)}%,
+          #ef4444 ${Math.floor((sliderEnd / videoDuration) * 100)}%
+        )`,
             }}
-          />
-          <input
-            type="range"
-            min={0}
-            max={Math.floor(videoDuration)}
-            value={sliderEnd}
-            onChange={(e) => {
-              const val = Number(e.target.value);
-              if (val > sliderStart) {
-                setSliderEnd(val);
-                setEndTime(
-                  `${Math.floor(val / 60)}:${String(val % 60).padStart(2, "0")}`
-                );
-              }
-            }}
-          />
+          >
+            <input
+              type="range"
+              min={0}
+              max={Math.floor(videoDuration)}
+              value={sliderStart}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                if (val < sliderEnd) {
+                  setSliderStart(val);
+                  setStartTime(
+                    `${Math.floor(val / 60)}:${String(val % 60).padStart(
+                      2,
+                      "0"
+                    )}`
+                  );
+                }
+              }}
+              title={`Start: ${startTime}`}
+              className="absolute left-0 w-full appearance-none bg-transparent pointer-events-auto h-2"
+            />
+
+            <input
+              type="range"
+              min={0}
+              max={Math.floor(videoDuration)}
+              value={sliderEnd}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                if (val > sliderStart) {
+                  setSliderEnd(val);
+                  setEndTime(
+                    `${Math.floor(val / 60)}:${String(val % 60).padStart(
+                      2,
+                      "0"
+                    )}`
+                  );
+                }
+              }}
+              title={`End: ${endTime}`}
+              className="absolute left-0 w-full appearance-none bg-transparent pointer-events-auto h-2"
+            />
+          </div>
         </div>
       )}
 
@@ -473,7 +502,10 @@ function App() {
         </p>
       )}
 
-      <button onClick={handleSend} style={{ marginTop: "10px" }}>
+      <button
+        onClick={handleSend}
+        className="w-full py-2 px-4 mb-3 bg-black hover:bg-gray-800 text-white font-bold rounded-lg shadow-lg transition-all duration-200"
+      >
         Convert Video Transcript
       </button>
       <p style={{ fontSize: "12px", color: "#888", marginTop: "4px" }}>
@@ -497,19 +529,12 @@ function App() {
                 selectedChatTabId: selectedTabId,
               });
 
-              setStatus("Sending to ChatGPT...");
-              setLoading(true);
+              dispatch(setStatus("Fetching transcript..."));
+              dispatch(setLoading(true));
             }}
-            style={{
-              backgroundColor: "#4caf50",
-              color: "white",
-              border: "none",
-              borderRadius: "5px",
-              padding: "6px",
-              fontWeight: "bold",
-              width: "100%",
-              marginBottom: "10px",
-            }}
+            className={
+              "w-full py-2 px-4 mb-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg shadow-md transition-all duration-200"
+            }
           >
             Send to ChatGPT
           </button>

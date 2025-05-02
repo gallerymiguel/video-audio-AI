@@ -15,7 +15,7 @@
     return parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0];
   }
 
-  async function getYouTubeCaptions() {
+  async function getYouTubeCaptions(preferredLanguage = "en") {
     function extractPlayerResponse() {
       if (window.ytInitialPlayerResponse) return window.ytInitialPlayerResponse;
 
@@ -59,11 +59,113 @@
     try {
       const playerResponse = await waitForPlayerResponse();
       const tracks =
-        playerResponse.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+        playerResponse?.captions?.playerCaptionsTracklistRenderer
+          ?.captionTracks;
 
       if (!tracks || tracks.length === 0) return "❌ No captions available.";
 
-      const captionTrack = tracks[0];
+      // ✅ Pull preferred language from storage
+      const { preferredLanguage } = await new Promise((resolve) =>
+        chrome.storage.local.get("preferredLanguage", resolve)
+      );
+
+      // Normalize strings to lowercase for reliable comparison
+      // Normalize strings to lowercase for reliable comparison
+      const preferredLang = (preferredLanguage || "en").toLowerCase();
+
+      let captionTrack = null;
+
+      // 1) Auto-generated (“asr”) captions in preferred language
+      captionTrack = tracks.find(
+        (t) =>
+          t.kind === "asr" && t.languageCode?.toLowerCase() === preferredLang
+      );
+      if (captionTrack) {
+        console.log(
+          "🔍 Found auto-generated captions for",
+          preferredLang,
+          captionTrack
+        );
+      }
+
+      // 2) Manually uploaded captions in preferred language
+      if (!captionTrack) {
+        captionTrack = tracks.find(
+          (t) =>
+            t.languageCode?.toLowerCase() === preferredLang && t.kind !== "asr"
+        );
+        if (captionTrack) {
+          console.log(
+            "🔍 Found manual captions for",
+            preferredLang,
+            captionTrack
+          );
+        }
+      }
+
+      // 3) Legacy vssId match
+      if (!captionTrack) {
+        captionTrack = tracks.find((t) => t.vssId === `.${preferredLang}`);
+        if (captionTrack) {
+          console.log(
+            "🔍 Found captions via vssId for",
+            preferredLang,
+            captionTrack
+          );
+        }
+      }
+
+      // 4) Name match (simpleText)
+      if (!captionTrack) {
+        captionTrack = tracks.find((t) =>
+          t.name?.simpleText?.toLowerCase().includes(preferredLang)
+        );
+        if (captionTrack) {
+          console.log(
+            "🔍 Found captions by name match for",
+            preferredLang,
+            captionTrack
+          );
+        }
+      }
+
+      // 5) English manual fallback
+      if (!captionTrack) {
+        captionTrack = tracks.find(
+          (t) => t.languageCode?.startsWith("en") && t.kind !== "asr"
+        );
+        if (captionTrack) {
+          console.log("🔍 Fallback to manual English captions:", captionTrack);
+        }
+      }
+
+      // 6) English auto-gen fallback
+      if (!captionTrack) {
+        captionTrack = tracks.find(
+          (t) => t.languageCode?.startsWith("en") && t.kind === "asr"
+        );
+        if (captionTrack) {
+          console.log(
+            "🔍 Fallback to auto-generated English captions:",
+            captionTrack
+          );
+        }
+      }
+
+      // 7) Last-resort: any track
+      if (!captionTrack) {
+        captionTrack = tracks[0];
+        console.log("🔍 No preferred match—picking first track:", captionTrack);
+      }
+
+      if (!captionTrack) {
+        console.warn("⚠️ Could not find any usable caption track at all.");
+        return "❌ No usable captions found.";
+      }
+
+      // Finally, you have `captionTrack`—proceed to fetch its `baseUrl`
+      console.log("✅ Using caption track:", captionTrack);
+
       const res = await fetch(captionTrack.baseUrl);
       const xml = await res.text();
       const xmlDoc = new DOMParser().parseFromString(xml, "text/xml");
@@ -78,12 +180,25 @@
           const start = parseFloat(el.getAttribute("start"));
           return start >= startSec && start <= endSec;
         })
-        .map((el) => el.textContent.replace(/&#39;/g, "'"));
+        .map((el) =>
+          el.textContent
+            .replace(/&#39;/g, "'")
+            .replace(/&quot;/g, '"')
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+        );
 
-      return texts.join(" ");
+      return {
+        transcript: texts.join(" "),
+        sourceLangCode: captionTrack.languageCode,
+      };
     } catch (err) {
       console.log(err);
-      return err;
+      return {
+        transcript: "❌ Failed to fetch YouTube captions.",
+        sourceLangCode: preferredLanguage || "en",
+      };
     }
   }
 
@@ -145,6 +260,11 @@
     }
   }
   async function captureAudioFromVideo(durationSeconds = 5) {
+    if (window.isAudioCaptureInProgress) {
+      console.log("⚡ Already capturing audio — ignoring new request.");
+      return;
+    }
+    window.isAudioCaptureInProgress = true;
     try {
       console.log("🎙️ Starting to capture audio from video...");
 
@@ -179,7 +299,7 @@
         const formData = new FormData();
         const file = new File([blob], "audio.webm", { type: "audio/webm" });
         formData.append("audio", file);
-
+        window.isAudioCaptureInProgress = false;
         try {
           const response = await fetch("http://localhost:3000/transcribe", {
             method: "POST",
@@ -232,7 +352,7 @@
   // 🔥 Now smartly choose based on site:
   if (isInstagram) {
     console.log("📸 Instagram Reel or Post detected.");
-    
+
     window.isInstagramScraping = true;
 
     getInstagramCaptions().then((transcript) => {
@@ -242,11 +362,15 @@
       );
       chrome.runtime.sendMessage({ type: "TRANSCRIPT_FETCHED", transcript });
 
-      // 🆕 After sending the transcript, also capture audio
-      captureAudioFromVideo(5); // 5 seconds for now
+      const videoEl = document.querySelector("video");
+      const durationSec =
+        videoEl && videoEl.duration > 0 ? Math.ceil(videoEl.duration) : 5; // fallback if duration isn’t ready
+      console.log(`🎙️ Capturing full Instagram audio (${durationSec}s)`);
+      captureAudioFromVideo(durationSec);
     });
   } else if (isYouTube) {
     console.log("🎥 YouTube Video detected.");
+
     function waitForVideo(timeout = 5000) {
       return new Promise((resolve, reject) => {
         const interval = 100;
@@ -270,22 +394,48 @@
         video.play();
         setTimeout(() => {
           video.pause();
-          getYouTubeCaptions().then((transcript) => {
-            chrome.runtime.sendMessage({
-              type: "TRANSCRIPT_FETCHED",
-              transcript,
-            });
-          });
+          chrome.storage.local.get(
+            "preferredLanguage",
+            ({ preferredLanguage }) => {
+              getYouTubeCaptions(preferredLanguage || "en").then(
+                ({ transcript, sourceLangCode }) => {
+                  console.log("🔁 caption result:", {
+                    transcript,
+                    sourceLangCode,
+                  });
+                  chrome.runtime.sendMessage({
+                    type: "TRANSCRIPT_FETCHED",
+                    transcript,
+                    language: preferredLanguage || "en",
+                    sourceLangCode, // now properly in scope
+                  });
+                }
+              );
+            }
+          );
         }, 3000);
       })
       .catch((err) => {
         console.log(err);
-        getYouTubeCaptions().then((transcript) => {
-          chrome.runtime.sendMessage({
-            type: "TRANSCRIPT_FETCHED",
-            transcript,
-          });
-        });
+        chrome.storage.local.get(
+          "preferredLanguage",
+          ({ preferredLanguage }) => {
+            getYouTubeCaptions(preferredLanguage || "en").then(
+              ({ transcript, sourceLangCode }) => {
+                console.log("🔁 caption result:", {
+                  transcript,
+                  sourceLangCode,
+                });
+                chrome.runtime.sendMessage({
+                  type: "TRANSCRIPT_FETCHED",
+                  transcript,
+                  language: preferredLanguage || "en",
+                  sourceLangCode, // now properly in scope
+                });
+              }
+            );
+          }
+        );
       });
   }
 })();

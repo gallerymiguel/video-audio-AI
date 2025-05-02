@@ -59,6 +59,22 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [waitingForVideo, setWaitingForVideo] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState("en");
+
+  useEffect(() => {
+    chrome.storage.local.get("preferredLanguage", ({ preferredLanguage }) => {
+      if (preferredLanguage) {
+        setSelectedLanguage(preferredLanguage);
+      } else {
+        setSelectedLanguage("en"); // fallback to English
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    console.log("🌐 Language state has changed:", selectedLanguage);
+  }, [selectedLanguage]);
+  console.log("📤 Sending transcript with language:", selectedLanguage);
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -120,6 +136,13 @@ function App() {
           clearTimeout(window._transcriptTimeout);
           dispatch(setLoading(false));
           dispatch(setTranscript(message.transcript));
+
+          // Save or log the preferred language
+          const language = message.language || "English";
+          console.log("🌐 Language received with transcript:", language);
+
+          // Store in local state or Redux if needed
+          localStorage.setItem("lastTranscriptLanguage", language);
 
           if (message.transcript.length > 3000) {
             dispatch(
@@ -196,6 +219,7 @@ function App() {
 
   // Send message to ChatGPT tab
   const handleSend = () => {
+    if (loading) return; 
     dispatch(setStatus("Fetching transcript..."));
     dispatch(setLoading(true));
 
@@ -207,7 +231,7 @@ function App() {
           "❌ No response. Try refreshing YouTube or re-selecting a tab."
         )
       );
-    }, 10000);
+    }, 60000);
 
     // Format validation: mm:ss or m:ss
     const isValidTime = (str) => /^(\d{1,2}):([0-5]?\d)$/.test(str);
@@ -227,18 +251,17 @@ function App() {
     let end = timeToSeconds(endTime);
 
     // ✅ If both are "00:00", treat it as "get full video"
-
     if (start >= end) {
       setTimestampError("❌ Start time must be before end time.");
       dispatch(setLoading(false));
       return;
     }
 
-    // Get video duration from the active YouTube tab
+    // Get video duration from the active YouTube/Instagram tab
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const tabId = tabs[0]?.id;
       if (!tabId) {
-        setTimestampError("❌ Could not find active YouTube tab.");
+        setTimestampError("❌ Could not find active video tab.");
         dispatch(setLoading(false));
         return;
       }
@@ -253,6 +276,7 @@ function App() {
         },
         (results) => {
           const durationSec = results?.[0]?.result;
+
           // ✅ Treat 00:00 to 00:00 as "full video"
           if (start > durationSec || end > durationSec) {
             setTimestampError(
@@ -280,29 +304,27 @@ function App() {
             console.log("✅ endTime state now:", formattedEnd);
           }
 
-          if (start > durationSec || end > durationSec) {
-            setTimestampError(
-              "❌ One or both timestamps exceed the video length."
-            );
-            dispatch(setLoading(false));
-            return;
-          }
           // ✅ Store video data and update sliders
           setSliderStart(0);
           setSliderEnd(Math.floor(durationSec));
           setVideoDuration(durationSec);
-
           setTimestampError(""); // ✅ Clear errors if all is good
 
           // ✅ Finally send to background script
-          console.log("📤 Sending SEND_TO_CHATGPT from Convert button");
           setLastUsedStart(startTime);
           setLastUsedEnd(endTime);
-          chrome.runtime.sendMessage({
-            type: "SEND_TO_CHATGPT",
+          console.log("📤 Sending SEND_TO_CHATGPT from Convert button", {
+            contentTabId: tabId,
             startTime,
             endTime,
-            selectedChatTabId: selectedTabId,
+            selectedTabId,
+          });
+          chrome.runtime.sendMessage({
+            type: "SEND_TO_CHATGPT",
+            contentTabId: tabId,
+            startTime,
+            endTime,
+            selectedTabId,
           });
         }
       );
@@ -311,6 +333,38 @@ function App() {
 
   return (
     <div className="w-[320px] h-[500px] bg-gray-100 p-4">
+      {showSettings && (
+        <div className="absolute top-0 left-0 w-full h-full bg-white shadow-lg z-50 animate-slide-in p-4">
+          <h2 className="text-lg font-bold mb-4">Settings</h2>
+
+          <label className="block mb-2 text-sm font-semibold">
+            Select Language
+          </label>
+          <select
+            value={selectedLanguage}
+            onChange={(e) => {
+              const lang = e.target.value;
+              setSelectedLanguage(lang);
+              chrome.storage.local.set({ preferredLanguage: lang });
+            }}
+            className="w-full p-2 border border-gray-300 rounded-lg"
+          >
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+          </select>
+
+          <button
+            onClick={() => setShowSettings(false)}
+            className="mt-6 w-full bg-black text-white py-2 rounded-lg shadow hover:bg-gray-900"
+          >
+            Close Settings
+          </button>
+        </div>
+      )}
       <div className={`fade-in-out ${videoError ? "show" : ""}`}>
         {videoError && (
           <p
@@ -342,16 +396,17 @@ function App() {
             ⏳ Waiting for video to load...
           </p>
         )}
-        <button
-          onClick={() => setShowSettings(!showSettings)}
-          className="absolute top-3 right-3 p-1 rounded-full bg-white shadow hover:shadow-md transition"
-          title="Settings"
-        >
-          <span role="img" aria-label="Settings" className="text-xl">
-            ⚙️
-          </span>
-        </button>
       </div>
+
+      <button
+        onClick={() => setShowSettings(!showSettings)}
+        className="absolute top-1 right-1 rounded-full hover:shadow-md transition"
+        title="Settings"
+      >
+        <span role="img" aria-label="Settings" className="text-xl">
+          ⚙️
+        </span>
+      </button>
 
       {chatTabs.map((tab) => (
         <button
@@ -504,6 +559,7 @@ function App() {
 
       <button
         onClick={handleSend}
+        disabled={loading}   
         className="w-full py-2 px-4 mb-3 bg-black hover:bg-gray-800 text-white font-bold rounded-lg shadow-lg transition-all duration-200"
       >
         Convert Video Transcript
@@ -527,8 +583,8 @@ function App() {
                 type: "SEND_TRANSCRIPT_TO_CHATGPT",
                 transcript: rawTranscript,
                 selectedChatTabId: selectedTabId,
+                language: selectedLanguage || "en", // always pass a valid code
               });
-
               dispatch(setStatus("Fetching transcript..."));
               dispatch(setLoading(true));
             }}

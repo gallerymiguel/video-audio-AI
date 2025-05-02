@@ -83,6 +83,22 @@ input[type="range"]::-moz-range-track {
   border-radius: 4px;
 }
 
+@keyframes slide-in {
+  from {
+    transform: translateY(-100%);
+    opacity: 0.3;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out forwards;
+}
+
+
 body {
   @apply font-sans;
 }

@@ -11,9 +11,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@apollo/client": "^3.13.8",
     "franc-min": "^6.2.0",
+    "graphql": "^16.11.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-router-dom": "^7.5.3",
     "redux-devtools-extension": "^2.13.9"
   },
   "devDependencies": {

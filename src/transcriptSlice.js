@@ -7,6 +7,7 @@ const transcriptSlice = createSlice({
     loading: false,    // For spinners
     transcript: "",    // The raw transcript text
     charCount: null,   // How long the transcript is
+    description: "",  // The video description text
   },
   reducers: {
     setStatus: (state, action) => {
@@ -23,8 +24,11 @@ const transcriptSlice = createSlice({
       state.transcript = "";
       state.charCount = null;
     },
+    setDescription: (state, action) => {
+      state.description = action.payload;
+    },    
   },
 });
 
-export const { setStatus, setLoading, setTranscript, clearTranscript } = transcriptSlice.actions;
+export const { setStatus, setLoading, setTranscript, clearTranscript, setDescription, } = transcriptSlice.actions;
 export default transcriptSlice.reducer;

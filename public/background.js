@@ -2,64 +2,69 @@
 
 // Keep track of the last caption language we fetched
 let lastSourceLangCode = "en";
+let lastVideoDescription = "";
 
 // background.js
 chrome.runtime.onMessage.addListener((request, sender) => {
-    if (request.type === "SEND_TO_CHATGPT") {
-      console.log("🛎️ Received SEND_TO_CHATGPT:", request);
-  
-      const { contentTabId, startTime, endTime } = request;
-      if (!contentTabId) {
-        console.error("❌ No contentTabId provided.");
-        return;
-      }
-  
-      // Get the URL of the content tab explicitly
-      chrome.tabs.get(contentTabId, (tab) => {
-        if (chrome.runtime.lastError || !tab?.url) {
-          console.error("❌ Could not retrieve content tab:", chrome.runtime.lastError);
-          return;
-        }
-  
-        const url = tab.url;
-        const isYouTubeVideo = !!url.match(/youtube\.com\/(watch\?v=|shorts\/)/);
-        const isInstagram = !!url.match(/instagram\.com\/(reels|reel|p)\//);
-  
-        if (!isYouTubeVideo && !isInstagram) {
-          console.log("❌ Not a valid YouTube or Instagram page:", url);
-          return;
-        }
-  
-        if (isYouTubeVideo) {
-          chrome.scripting.executeScript(
-            {
-              target: { tabId: contentTabId },
-              func: (s, e) => {
-                window.transcriptSliceRange = { start: s, end: e };
-              },
-              args: [startTime || "00:00", endTime || "99:59"],
-            },
-            () => {
-              chrome.scripting.executeScript({
-                target: { tabId: contentTabId },
-                files: ["content.js"],
-              });
-            }
-          );
-        } else {
-          // Instagram scrape + audio
-          chrome.scripting.executeScript({
-            target: { tabId: contentTabId },
-            files: ["content.js"],
-          });
-        }
-      });
-  
+  if (request.type === "SEND_TO_CHATGPT") {
+    console.log("🛎️ Received SEND_TO_CHATGPT:", request);
+
+    const { contentTabId, startTime, endTime } = request;
+    if (!contentTabId) {
+      console.error("❌ No contentTabId provided.");
       return;
     }
 
+    // Get the URL of the content tab explicitly
+    chrome.tabs.get(contentTabId, (tab) => {
+      if (chrome.runtime.lastError || !tab?.url) {
+        console.error(
+          "❌ Could not retrieve content tab:",
+          chrome.runtime.lastError
+        );
+        return;
+      }
+
+      const url = tab.url;
+      const isYouTubeVideo = !!url.match(/youtube\.com\/(watch\?v=|shorts\/)/);
+      const isInstagram = !!url.match(/instagram\.com\/(reels|reel|p)\//);
+
+      if (!isYouTubeVideo && !isInstagram) {
+        console.log("❌ Not a valid YouTube or Instagram page:", url);
+        return;
+      }
+
+      if (isYouTubeVideo) {
+        chrome.scripting.executeScript(
+          {
+            target: { tabId: contentTabId },
+            func: (s, e) => {
+              window.transcriptSliceRange = { start: s, end: e };
+            },
+            args: [startTime || "00:00", endTime || "99:59"],
+          },
+          () => {
+            chrome.scripting.executeScript({
+              target: { tabId: contentTabId },
+              files: ["content.js"],
+            });
+          }
+        );
+      } else {
+        // Instagram scrape + audio
+        chrome.scripting.executeScript({
+          target: { tabId: contentTabId },
+          files: ["content.js"],
+        });
+      }
+    });
+
+    return;
+  }
+
   // ─── 2) TRANSCRIPT_FETCHED branch ────────────────────────────
   if (request.type === "TRANSCRIPT_FETCHED") {
+    lastVideoDescription = request.description || "";
     console.log("📥 TRANSCRIPT_FETCHED received...");
 
     const tabId = sender.tab?.id;
@@ -104,6 +109,7 @@ chrome.runtime.onMessage.addListener((request, sender) => {
         chrome.runtime.sendMessage({
           type: "TRANSCRIPT_READY",
           transcript: request.transcript,
+          description: lastVideoDescription,
         });
       }
     );
@@ -120,8 +126,13 @@ chrome.runtime.onMessage.addListener((request, sender) => {
       transcript,
       selectedChatTabId,
       language: targetLangCode = "en",
+      includeDescription = false,
+      description,
     } = request;
 
+    if (includeDescription && description) {
+      lastVideoDescription = description; // ✅ update internal variable
+    }
     if (!selectedChatTabId) {
       console.error("❌ No ChatGPT tab selected.");
       return;
@@ -177,17 +188,25 @@ chrome.runtime.onMessage.addListener((request, sender) => {
       "targetLangCode =",
       targetLangCode
     );
-
+    const finalDescription = description || lastVideoDescription;
+    
     let prompt;
+    let finalTranscript = transcript;
+    console.log("🧾 Final description used:", finalDescription);
+    if (includeDescription && finalDescription) {
+      finalTranscript += `\n\n[DESCRIPTION]\n${finalDescription}`;
+    }
+    
+
     if (sourceLangCode === targetLangCode) {
       prompt = (summaryPrompts[targetLangCode] || summaryPrompts.en)(
-        transcript
+        finalTranscript
       );
       console.log("⚙️ Using summary prompt for", targetLangCode);
     } else {
       const srcName = languageNameMap[sourceLangCode] || sourceLangCode;
       prompt = (translatePrompts[targetLangCode] || translatePrompts.en)(
-        transcript,
+        finalTranscript,
         srcName
       );
       console.log(
@@ -219,9 +238,10 @@ chrome.runtime.onMessage.addListener((request, sender) => {
     });
 
     // 7) Let popup know we’re done
+    console.log("📤 SEND_TRANSCRIPT_TO_CHATGPT received:", request);
     chrome.runtime.sendMessage({
       type: "YOUTUBE_TRANSCRIPT_DONE",
-      charCount: transcript.length,
+      charCount: finalTranscript.length,
     });
 
     return;

@@ -5,6 +5,7 @@ import {
   setLoading,
   setTranscript,
   clearTranscript,
+  setDescription,
 } from "./transcriptSlice";
 
 const styleTag = document.createElement("style");
@@ -45,6 +46,7 @@ function App() {
   const loading = useSelector((state) => state.transcript.loading);
   const rawTranscript = useSelector((state) => state.transcript.transcript);
   const charCount = useSelector((state) => state.transcript.charCount);
+  const description = useSelector((state) => state.transcript.description);
 
   const [chatTabs, setChatTabs] = useState([]);
   const [selectedTabId, setSelectedTabId] = useState(null);
@@ -60,6 +62,7 @@ function App() {
   const [waitingForVideo, setWaitingForVideo] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("en");
+  const [includeDescription, setIncludeDescription] = useState(false);
 
   useEffect(() => {
     chrome.storage.local.get("preferredLanguage", ({ preferredLanguage }) => {
@@ -127,6 +130,11 @@ function App() {
   useEffect(() => {
     const listener = (message, sender, sendResponse) => {
       if (message.type === "TRANSCRIPT_READY") {
+        console.log("📥 Received TRANSCRIPT_READY in popup:", message);
+        if (message.description) {
+          console.log("📥 Received description in popup:", message.description);
+          dispatch(setDescription(message.description));
+        }
         if (typeof message.transcript === "string") {
           console.log(
             "✅ Transcript received:",
@@ -219,7 +227,11 @@ function App() {
 
   // Send message to ChatGPT tab
   const handleSend = () => {
-    if (loading) return; 
+    if (loading) {
+      setTimestampError("⚡ Still fetching transcript… please wait!");
+      return;
+    }
+    setTimestampError("");
     dispatch(setStatus("Fetching transcript..."));
     dispatch(setLoading(true));
 
@@ -559,7 +571,6 @@ function App() {
 
       <button
         onClick={handleSend}
-        disabled={loading}   
         className="w-full py-2 px-4 mb-3 bg-black hover:bg-gray-800 text-white font-bold rounded-lg shadow-lg transition-all duration-200"
       >
         Convert Video Transcript
@@ -576,21 +587,43 @@ function App() {
             </p>
           )}
 
+          <label className="flex items-center space-x-2 mb-2 text-sm text-gray-800">
+            <input
+              type="checkbox"
+              checked={includeDescription}
+              onChange={() => setIncludeDescription(!includeDescription)}
+              className="w-4 h-4 text-green-500 border-gray-300 rounded"
+            />
+            <span>Include video description (if available)</span>
+          </label>
+
           <button
             disabled={!rawTranscript || rawTranscript.startsWith("❌")}
             onClick={() => {
+              console.log("📤 Sending with description:", description);
+              console.log("✅ Checkbox checked?", includeDescription);
+              console.log("📤 About to send to ChatGPT:");
+              console.log("Transcript:", rawTranscript);
+              console.log("Description:", description);
+              console.log(
+                "Include description checkbox checked:",
+                includeDescription
+              );
+
               chrome.runtime.sendMessage({
                 type: "SEND_TRANSCRIPT_TO_CHATGPT",
                 transcript: rawTranscript,
                 selectedChatTabId: selectedTabId,
-                language: selectedLanguage || "en", // always pass a valid code
+                language: selectedLanguage || "en",
+                includeDescription, // ✅ this is checked
+                description, // 🛑 this must be pulled from useSelector!
               });
+
               dispatch(setStatus("Fetching transcript..."));
               dispatch(setLoading(true));
+              console.log("📦 Description being sent:", description);
             }}
-            className={
-              "w-full py-2 px-4 mb-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg shadow-md transition-all duration-200"
-            }
+            className="w-full py-2 px-4 mb-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg shadow-md transition-all duration-200"
           >
             Send to ChatGPT
           </button>

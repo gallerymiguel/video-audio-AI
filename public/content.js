@@ -22,14 +22,14 @@
         "🔍 Checking for",
         isShort ? "Shorts title" : "Full video description"
       );
-  
+
       if (isShort) {
         // 🔹 Shorts title logic
         const waitForShortsTitle = () =>
           new Promise((resolve) => {
             const interval = 100;
             let elapsed = 0;
-  
+
             const check = () => {
               const titleEl = document.querySelector(
                 "ytd-reel-player-overlay-renderer h2 span"
@@ -37,25 +37,25 @@
               if (titleEl && titleEl.textContent.trim()) {
                 return resolve(titleEl.textContent.trim());
               }
-  
+
               elapsed += interval;
               if (elapsed >= timeout) return resolve("");
               setTimeout(check, interval);
             };
-  
+
             check();
           });
-  
+
         const title = await waitForShortsTitle();
         if (title) {
           console.log("📄 Shorts title found:", title.slice(0, 100));
           return title;
         }
-  
+
         console.warn("❌ No Shorts title found.");
         return "";
       }
-  
+
       // 🔹 Try expanding full description for regular videos
       const expandBtn = document.querySelector("#description-inline-expander");
       if (expandBtn) {
@@ -63,17 +63,19 @@
         console.log("🖱️ Clicked 'Show more'");
         await new Promise((res) => setTimeout(res, 1000));
       }
-  
+
       // 🔹 Wait for and collect all visible span text
       const waitForFullDescription = () =>
         new Promise((resolve) => {
-          const container = document.querySelector("#description-inline-expander");
+          const container = document.querySelector(
+            "#description-inline-expander"
+          );
           if (!container) return resolve("");
-      
+
           let prevLength = 0;
           const interval = 100;
           let elapsed = 0;
-      
+
           const check = () => {
             const spans = container.querySelectorAll("span");
             const text = Array.from(spans)
@@ -85,28 +87,27 @@
                   !t.match(/^(Show transcript|Videos|About)$/i)
               )
               .join("\n");
-      
+
             if (text.length > prevLength) {
               prevLength = text.length;
             }
-      
+
             if (prevLength > 200) return resolve(text);
-      
+
             elapsed += interval;
             if (elapsed >= 5000) return resolve(text || "");
             setTimeout(check, interval);
           };
-      
+
           check();
         });
-      
-  
+
       const result = await waitForFullDescription();
       if (result) {
         console.log("📄 Full YouTube description:", result.slice(0, 200));
         return result;
       }
-  
+
       console.warn("❌ Full YouTube description not found or too short.");
       return "";
     } catch (err) {
@@ -114,7 +115,6 @@
       return "";
     }
   }
-  
 
   async function getYouTubeCaptions(preferredLanguage = "en") {
     function extractPlayerResponse() {
@@ -382,42 +382,59 @@
 
         window.isAudioCaptureInProgress = false;
 
-        try {
-          const response = await fetch("http://localhost:3000/transcribe", {
-            method: "POST",
-            body: formData,
-          });
+        chrome.storage.local.get(["token"], async (result) => {
+          const token = result.token;
+          if (!token) {
+            console.warn("⚠️ No auth token found in chrome.storage.local");
+          }
 
-          const data = await response.json();
-
-          if (data && data.transcript) {
-            window.isInstagramScraping = false;
-
-            console.log(
-              "✅ Transcription from server:",
-              data.transcript.slice(0, 100),
-              "..."
-            );
-
-            chrome.runtime.sendMessage({
-              type: "TRANSCRIPT_FETCHED",
-              transcript: data.transcript,
-              description: window.lastInstagramDescription || "",
+          try {
+            const response = await fetch("http://localhost:3000/transcribe", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`, // ✅ THIS still needs to be here
+              },
+              body: formData,
             });
-          } else {
-            console.error("❌ Failed to get text from server:", data);
+
+            const data = await response.json();
+
+            if (data && data.transcript) {
+              window.isInstagramScraping = false;
+
+              console.log(
+                "✅ Transcription from server:",
+                data.transcript.slice(0, 100),
+                "..."
+              );
+              console.log(
+                "🧮 Estimated token count from server:",
+                data.estimatedTokens
+              );
+              chrome.runtime.sendMessage({
+                type: "USAGE_UPDATED",
+                estimatedTokenCount: data.estimatedTokens,
+              });
+              chrome.runtime.sendMessage({
+                type: "TRANSCRIPT_FETCHED",
+                transcript: data.transcript,
+                description: window.lastInstagramDescription || "",
+              });
+            } else {
+              console.error("❌ Failed to get text from server:", data);
+              chrome.runtime.sendMessage({
+                type: "TRANSCRIPT_FETCHED",
+                transcript: "❌ Failed to get text from server.",
+              });
+            }
+          } catch (error) {
+            console.error("❌ Error during fetch:", error);
             chrome.runtime.sendMessage({
               type: "TRANSCRIPT_FETCHED",
-              transcript: "❌ Failed to get text from server.",
+              transcript: "❌ Error during transcription request.",
             });
           }
-        } catch (error) {
-          console.error("❌ Error during fetch:", error);
-          chrome.runtime.sendMessage({
-            type: "TRANSCRIPT_FETCHED",
-            transcript: "❌ Error during transcription request.",
-          });
-        }
+        });
       };
 
       // ▶️ Start recording first...
@@ -625,16 +642,16 @@
           ({ preferredLanguage }) => {
             getYouTubeCaptions(preferredLanguage || "en").then(
               ({ transcript, sourceLangCode }) => {
-                console.log("🔁 caption result:", {
+                console.log("🔁 caption result (no description):", {
                   transcript,
                   sourceLangCode,
                 });
                 chrome.runtime.sendMessage({
                   type: "TRANSCRIPT_FETCHED",
                   transcript,
-                  description,
+                  description: "", // ✅ Safe fallback
                   language: preferredLanguage || "en",
-                  sourceLangCode, // now properly in scope
+                  sourceLangCode,
                 });
               }
             );

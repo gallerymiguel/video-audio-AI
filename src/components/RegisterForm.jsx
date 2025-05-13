@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useMutation } from "@apollo/client";
-import { REGISTER_MUTATION } from "../../graphql/mutations";
+import { REGISTER_MUTATION } from "../graphql/mutations";
 
 const RegisterForm = () => {
   const [formData, setFormData] = useState({ email: "", password: "" });
@@ -19,6 +19,7 @@ const RegisterForm = () => {
       const result = await register({ variables: formData });
       const token = result.data.register;
       localStorage.setItem("token", token);
+      window.dispatchEvent(new Event("authChange"));
       alert("✅ Registered successfully!");
     } catch (err) {
       console.error("Registration error:", err);
@@ -28,7 +29,7 @@ const RegisterForm = () => {
   return (
     <form
       onSubmit={handleSubmit}
-      className="max-w-md mx-auto p-6 bg-white shadow-md rounded-xl space-y-4"
+      className="max-w-md mx-auto p-6 bg-white space-y-4"
     >
       <h2 className="text-2xl font-bold text-center">Create an Account</h2>
 

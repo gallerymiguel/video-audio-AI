@@ -1,10 +1,27 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useMutation } from "@apollo/client";
-import { LOGIN_MUTATION } from "../../graphql/mutations";
+import { LOGIN_MUTATION } from "../graphql/mutations"; // Adjust path as needed
 
-const LoginForm = () => {
+const LoginForm = ({ onLoginSuccess }) => {
   const [formData, setFormData] = useState({ email: "", password: "" });
+  const [rememberMe, setRememberMe] = useState(false);
   const [login, { loading, error }] = useMutation(LOGIN_MUTATION);
+
+  // Load remembered credentials from chrome storage on mount
+  useEffect(() => {
+    chrome.storage.local.get(
+      ["rememberedEmail", "rememberedPassword"],
+      (result) => {
+        if (result.rememberedEmail || result.rememberedPassword) {
+          setFormData({
+            email: result.rememberedEmail || "",
+            password: result.rememberedPassword || "",
+          });
+          setRememberMe(true);
+        }
+      }
+    );
+  }, []);
 
   const handleChange = (e) => {
     setFormData((prev) => ({
@@ -18,8 +35,26 @@ const LoginForm = () => {
     try {
       const result = await login({ variables: formData });
       const token = result.data.login;
-      localStorage.setItem("token", token);
-      alert("✅ Logged in successfully!");
+      if (token) {
+        localStorage.setItem("token", token);
+        window.dispatchEvent(new Event("authChange"));
+        chrome.storage.local.set({ token });
+        if (rememberMe) {
+          chrome.storage.local.set({
+            rememberedEmail: formData.email,
+            rememberedPassword: formData.password,
+          });
+        } else {
+          chrome.storage.local.remove([
+            "rememberedEmail",
+            "rememberedPassword",
+          ]);
+        }
+
+        onLoginSuccess(token); // Notify parent of success
+      } else {
+        console.error("No token received");
+      }
     } catch (err) {
       console.error("Login error:", err);
     }
@@ -28,7 +63,7 @@ const LoginForm = () => {
   return (
     <form
       onSubmit={handleSubmit}
-      className="max-w-md mx-auto p-6 bg-white shadow-md rounded-xl space-y-4"
+      className="max-w-md mx-auto p-6 bg-white space-y-4"
     >
       <h2 className="text-2xl font-bold text-center">Login</h2>
 
@@ -51,6 +86,16 @@ const LoginForm = () => {
         className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         required
       />
+
+      <label className="flex items-center space-x-2 text-sm">
+        <input
+          type="checkbox"
+          checked={rememberMe}
+          onChange={() => setRememberMe(!rememberMe)}
+          className="w-4 h-4"
+        />
+        <span>Remember Me</span>
+      </label>
 
       <button
         type="submit"

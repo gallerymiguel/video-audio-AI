@@ -62,6 +62,16 @@ chrome.runtime.onMessage.addListener((request, sender) => {
     return;
   }
 
+  // ─── 0) CHECK_SUBSCRIPTION_STATUS branch ────────────────────
+//   if (user.usageCount + incrementBy > monthlyLimit) {
+//   throw new Error("❌ Monthly usage limit reached. Try again next cycle.");
+// }
+  // ─── 1) CHECK_SUBSCRIPTION_STATUS branch ──────────────────── might use for future
+  if (!isSubscribed && isInstagramVideo) {
+    console.warn("🚫 Blocked Instagram processing: not subscribed");
+    return;
+  }
+
   // ─── 2) TRANSCRIPT_FETCHED branch ────────────────────────────
   if (request.type === "TRANSCRIPT_FETCHED") {
     lastVideoDescription = request.description || "";
@@ -189,14 +199,13 @@ chrome.runtime.onMessage.addListener((request, sender) => {
       targetLangCode
     );
     const finalDescription = description || lastVideoDescription;
-    
+
     let prompt;
     let finalTranscript = transcript;
     console.log("🧾 Final description used:", finalDescription);
     if (includeDescription && finalDescription) {
       finalTranscript += `\n\n[DESCRIPTION]\n${finalDescription}`;
     }
-    
 
     if (sourceLangCode === targetLangCode) {
       prompt = (summaryPrompts[targetLangCode] || summaryPrompts.en)(
@@ -243,6 +252,47 @@ chrome.runtime.onMessage.addListener((request, sender) => {
       type: "YOUTUBE_TRANSCRIPT_DONE",
       charCount: finalTranscript.length,
     });
+
+    chrome.storage.local.get("token", ({ token }) => {
+      if (!token) {
+        console.warn("⚠️ No auth token found for usage increment.");
+        return;
+      }
+
+      fetch("https://48b2-136-49-49-188.ngrok-free.app/graphql", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          query: `mutation IncrementUsage($amount: Int!) {
+        incrementUsage(amount: $amount)
+      }`,
+          variables: {
+            amount: estimatedTokenCountHere, // ⛳ replace with actual token count
+          },
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.errors) {
+            console.error("❌ Usage increment failed:", data.errors);
+          } else {
+            console.log("✅ Usage incremented successfully");
+            chrome.runtime.sendMessage({ type: "USAGE_INCREMENTED" });
+          }
+        })
+        .catch((err) => {
+          console.error("❌ Network error during usage increment:", err);
+        });
+    });
+    
+    if (request.type === "USAGE_UPDATED") {
+      console.log("📊 Usage updated with", request.estimatedTokenCount);
+
+      chrome.runtime.sendMessage({ type: "TRIGGER_USAGE_REFETCH" });
+    }
 
     return;
   }

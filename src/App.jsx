@@ -7,6 +7,11 @@ import {
   clearTranscript,
   setDescription,
 } from "./transcriptSlice";
+import AuthPage from "./components/AuthPage.jsx";
+import useSubscriptionStatus, {
+  useStartSubscription,
+} from "./hooks/useSubscriptionStatus";
+import useUsageCount from "./hooks/useUsageCount";
 
 const styleTag = document.createElement("style");
 styleTag.textContent = `
@@ -47,7 +52,6 @@ function App() {
   const rawTranscript = useSelector((state) => state.transcript.transcript);
   const charCount = useSelector((state) => state.transcript.charCount);
   const description = useSelector((state) => state.transcript.description);
-
   const [chatTabs, setChatTabs] = useState([]);
   const [selectedTabId, setSelectedTabId] = useState(null);
   const [startTime, setStartTime] = useState("00:00");
@@ -63,6 +67,55 @@ function App() {
   const [videoError, setVideoError] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("en");
   const [includeDescription, setIncludeDescription] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [showAuthButton, setShowAuthButton] = useState(true);
+  const [authToken, setAuthToken] = useState(() =>
+    localStorage.getItem("token")
+  );
+  const [hasConverted, setHasConverted] = useState(false);
+  const {
+    isSubscribed,
+    loading: subLoading,
+    error,
+    refetch,
+  } = useSubscriptionStatus(authToken);
+  const { initiateCheckout, loading: checkoutLoading } = useStartSubscription();
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const {
+    usageCount,
+    loading: usageLoading,
+    refetch: refetchUsage,
+  } = useUsageCount();
+  const [localUsage, setLocalUsage] = useState(usageCount);
+
+  console.log("📊 usageCount from backend:", usageCount);
+
+  useEffect(() => {
+    if (authToken) {
+      console.log("✅ UI updated: User is logged in with token");
+    }
+  }, [authToken]);
+
+  useEffect(() => {
+    const t = localStorage.getItem("token");
+    if (t) setAuthToken(t);
+  }, []);
+
+  useEffect(() => {
+    setLocalUsage(usageCount); // update local when hook changes
+  }, [usageCount]);
+
+  useEffect(() => {
+    const listener = (message) => {
+      if (message.type === "TRIGGER_USAGE_REFETCH") {
+        console.log("🔁 Usage refetch triggered by background.");
+        refetch(); // ✅ will update usageCount state in real-time
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(listener);
+    return () => chrome.runtime.onMessage.removeListener(listener);
+  }, []);
 
   useEffect(() => {
     chrome.storage.local.get("preferredLanguage", ({ preferredLanguage }) => {
@@ -134,6 +187,7 @@ function App() {
         if (message.description) {
           console.log("📥 Received description in popup:", message.description);
           dispatch(setDescription(message.description));
+          refetchUsage();
         }
         if (typeof message.transcript === "string") {
           console.log(
@@ -145,18 +199,17 @@ function App() {
           dispatch(setLoading(false));
           dispatch(setTranscript(message.transcript));
 
-          // Save or log the preferred language
           const language = message.language || "English";
           console.log("🌐 Language received with transcript:", language);
-
-          // Store in local state or Redux if needed
           localStorage.setItem("lastTranscriptLanguage", language);
 
           if (message.transcript.length > 3000) {
+            setTimestampError("");
             dispatch(
               setStatus("⚠️ Transcript too long! Try reducing time range.")
             );
           } else {
+            setTimestampError("");
             dispatch(setStatus("✅ Transcript fetched! Ready to send."));
           }
         } else {
@@ -170,6 +223,14 @@ function App() {
         console.log("✅ Final send complete, char count:", message.charCount);
         dispatch(setLoading(false));
         dispatch(setStatus("✅ Transcript sent to ChatGPT!"));
+
+        refetch().then(({ data }) => {
+          console.log(
+            "🔁 Refetched usage count from backend:",
+            data?.getUsageCount
+          );
+        });
+
         setTimeout(() => dispatch(setStatus("")), 4000);
 
         chrome.tabs.query({}, (tabs) => {
@@ -178,6 +239,12 @@ function App() {
           );
           setChatTabs(matches);
         });
+      }
+
+      // ✅ Real-time usage count update
+      if (message.type === "USAGE_INCREMENTED") {
+        console.log("🔄 Refetching usage count after increment...");
+        refetch(); // from useUsageCount
       }
     };
 
@@ -225,8 +292,14 @@ function App() {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    setAuthToken(null);
+    setShowAuthButton(true);
+  };
   // Send message to ChatGPT tab
-  const handleSend = () => {
+
+  const continueTranscriptFlow = () => {
     if (loading) {
       setTimestampError("⚡ Still fetching transcript… please wait!");
       return;
@@ -234,7 +307,8 @@ function App() {
     setTimestampError("");
     dispatch(setStatus("Fetching transcript..."));
     dispatch(setLoading(true));
-
+    setHasConverted(true); // ✅ Lock UI state
+    setShowAuthButton(false);
     // Timeout fallback
     window._transcriptTimeout = setTimeout(() => {
       dispatch(setLoading(false));
@@ -331,6 +405,7 @@ function App() {
             endTime,
             selectedTabId,
           });
+
           chrome.runtime.sendMessage({
             type: "SEND_TO_CHATGPT",
             contentTabId: tabId,
@@ -340,6 +415,20 @@ function App() {
           });
         }
       );
+    });
+  };
+
+  const handleSend = () => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const url = tabs[0]?.url || "";
+      const isInstagram = url.includes("instagram.com");
+
+      if (isInstagram && !isSubscribed) {
+        setShowUpgradeModal(true);
+        return;
+      }
+
+      continueTranscriptFlow(tabs[0]?.id);
     });
   };
 
@@ -371,10 +460,44 @@ function App() {
 
           <button
             onClick={() => setShowSettings(false)}
-            className="mt-6 w-full bg-black text-white py-2 rounded-lg shadow hover:bg-gray-900"
+            className="absolute top-2 right-2 text-gray-500 hover:text-black"
           >
-            Close Settings
+            ❌
           </button>
+
+          {authToken && (
+            <>
+              {!isSubscribed && (
+                <button
+                  onClick={initiateCheckout}
+                  disabled={checkoutLoading}
+                  className="mt-4 w-full bg-yellow-400 text-black py-2 rounded-lg font-semibold hover:bg-yellow-500 transition"
+                >
+                  {checkoutLoading
+                    ? "Redirecting..."
+                    : "🔓 Upgrade to Unlock Instagram"}
+                </button>
+              )}
+
+              <button
+                onClick={handleLogout}
+                className="mt-4 w-full bg-red-600 text-white py-2 rounded-lg shadow hover:bg-red-700"
+              >
+                Sign Out
+              </button>
+
+              {authToken && isSubscribed && !usageLoading && (
+                <div className="mt-4 text-sm text-center text-gray-700">
+                  🔢 API Usage: <strong>{usageCount}</strong> / 8000 tokens
+                  {usageCount >= 6000 && (
+                    <p className="text-red-600 mt-1 font-semibold">
+                      ⚠️ You're nearing your monthly limit!
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
       <div className={`fade-in-out ${videoError ? "show" : ""}`}>
@@ -411,7 +534,12 @@ function App() {
       </div>
 
       <button
-        onClick={() => setShowSettings(!showSettings)}
+        onClick={async () => {
+          setShowSettings(!showSettings);
+          console.log("🔄 Manually refreshing usage count...");
+          const result = await refetchUsage();
+          setLocalUsage(result.data?.getUsageCount ?? 0);
+        }}
         className="absolute top-1 right-1 rounded-full hover:shadow-md transition"
         title="Settings"
       >
@@ -610,6 +738,8 @@ function App() {
                 includeDescription
               );
 
+              console.log("📨 Sending SEND_TRANSCRIPT_TO_CHATGPT message...");
+
               chrome.runtime.sendMessage({
                 type: "SEND_TRANSCRIPT_TO_CHATGPT",
                 transcript: rawTranscript,
@@ -622,12 +752,92 @@ function App() {
               dispatch(setStatus("Fetching transcript..."));
               dispatch(setLoading(true));
               console.log("📦 Description being sent:", description);
+              setTimeout(() => {
+                console.log(
+                  "🔁 Refetching usage count after sending transcript..."
+                );
+                refetch();
+              }, 1500); // wait a moment to let backend update
             }}
             className="w-full py-2 px-4 mb-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg shadow-md transition-all duration-200"
           >
             Send to ChatGPT
           </button>
         </>
+      )}
+
+      {!hasConverted && showAuthButton && !showAuth && !authToken && (
+        <button
+          className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white text-sm px-4 py-1.5 rounded-md shadow hover:bg-blue-700 transition"
+          onClick={() => setShowAuth(true)}
+        >
+          Login / Signup
+        </button>
+      )}
+
+      {authToken && showAuthButton && !hasConverted && !subLoading && (
+        <div
+          className={`absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-xs text-sm px-4 py-3 rounded-md shadow flex items-center justify-center ${
+            isSubscribed ? "bg-yellow-500" : "bg-green-500"
+          }`}
+          style={{ minWidth: "120px", textAlign: "center" }}
+        >
+          {isSubscribed ? "🌟 Premium Member" : "✅ Logged in"}
+        </div>
+      )}
+
+      {showAuth && (
+        <div className="absolute top-10 left-2 right-2 p-4 z-50">
+          <AuthPage
+            onLoginSuccess={async (token) => {
+              console.log("✅ onLoginSuccess triggered with token:", token);
+              localStorage.setItem("token", token);
+              chrome.storage.local.set({ token });
+              setAuthToken(token);
+              setShowAuth(false);
+              setShowAuthButton(true);
+
+              try {
+                await refetch(); // ✅ this triggers a GraphQL re-query after login
+                console.log("🔄 Refetched subscription after login");
+              } catch (err) {
+                console.warn("⚠️ Failed to refetch subscription:", err.message);
+              }
+            }}
+          />
+        </div>
+      )}
+      {showUpgradeModal && (
+        <div className="absolute top-0 left-0 w-full h-full bg-white shadow-lg z-50 p-4 animate-slide-in">
+          <h2 className="text-xl font-bold text-center mb-2 text-gray-800">
+            Upgrade to Pro
+          </h2>
+          <p className="text-sm text-gray-600 text-center mb-4">
+            Instagram features are available for Pro users only.
+          </p>
+
+          <ul className="text-sm text-gray-700 mb-4 space-y-1">
+            <li>✅ YouTube transcripts</li>
+            <li>✅ Timestamp selection</li>
+            <li>🚫 Instagram features</li>
+            <li>🚫 Usage cap override</li>
+          </ul>
+
+          <button
+            onClick={initiateCheckout}
+            disabled={checkoutLoading}
+            className="block w-full text-center bg-yellow-400 text-black py-2 rounded-lg font-semibold hover:bg-yellow-500 transition mb-2"
+          >
+            {checkoutLoading ? "Redirecting..." : "Subscribe Now"}
+          </button>
+
+          <button
+            onClick={() => setShowUpgradeModal(false)}
+            className="w-full bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition"
+          >
+            Cancel
+          </button>
+        </div>
       )}
     </div>
   );

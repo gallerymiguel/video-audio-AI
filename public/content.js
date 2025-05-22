@@ -5,6 +5,16 @@
   const isInstagram = isInstagramReel || isInstagramPost;
   const isYouTube = window.location.href.includes("youtube.com");
 
+  let CONFIG = null; // ← temporary global to store config
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window) return;
+    if (event.data.type === "CONFIG_DATA") {
+      CONFIG = event.data.payload;
+      console.log("✅ Config received in content.js:", CONFIG);
+    }
+  });
+
   if (!isInstagram && !isYouTube) {
     console.log("❌ Not on a supported page (YouTube or Instagram).");
     return;
@@ -325,9 +335,9 @@
     }
   }
 
-  async function captureAudioFromVideo(durationSeconds = 5) {
-    if (window.isAudioCaptureInProgress) {
-      console.log("⚡ Already capturing audio — ignoring new request.");
+  async function captureAudioFromVideo(durationSeconds) {
+    if (typeof durationSeconds !== "number" || durationSeconds <= 0) {
+      console.error("❌ Invalid duration passed to captureAudioFromVideo");
       return;
     }
 
@@ -367,7 +377,6 @@
       mediaRecorder.onstop = async () => {
         const blob = new Blob(chunks, { type: "audio/webm" });
         console.log("✅ Captured audio blob:", blob);
-
         console.log("🛰️ Sending audio to local server...");
 
         const url = URL.createObjectURL(blob);
@@ -379,62 +388,82 @@
         const formData = new FormData();
         const file = new File([blob], "audio.webm", { type: "audio/webm" });
         formData.append("audio", file);
+        formData.append("duration", durationSeconds); // ✅ this is the correct parameter
 
         window.isAudioCaptureInProgress = false;
 
-        chrome.storage.local.get(["token"], async (result) => {
-          const token = result.token;
-          if (!token) {
-            console.warn("⚠️ No auth token found in chrome.storage.local");
-          }
+        // ⬇️ Inject config.js
+        const configScript = document.createElement("script");
+        configScript.src = chrome.runtime.getURL("config.js");
+        document.documentElement.appendChild(configScript);
 
-          try {
-            const response = await fetch("http://localhost:3000/transcribe", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`, // ✅ THIS still needs to be here
-              },
-              body: formData,
-            });
+        configScript.onload = () => {
+          console.log("🧾 config.js loaded into page");
 
-            const data = await response.json();
+          const waitForConfig = setInterval(() => {
+            if (CONFIG?.WHISPER_SERVER_URL) {
+              clearInterval(waitForConfig);
 
-            if (data && data.transcript) {
-              window.isInstagramScraping = false;
+              const whisperUrl = CONFIG.WHISPER_SERVER_URL;
 
-              console.log(
-                "✅ Transcription from server:",
-                data.transcript.slice(0, 100),
-                "..."
-              );
-              console.log(
-                "🧮 Estimated token count from server:",
-                data.estimatedTokens
-              );
-              chrome.runtime.sendMessage({
-                type: "USAGE_UPDATED",
-                estimatedTokenCount: data.estimatedTokens,
-              });
-              chrome.runtime.sendMessage({
-                type: "TRANSCRIPT_FETCHED",
-                transcript: data.transcript,
-                description: window.lastInstagramDescription || "",
-              });
-            } else {
-              console.error("❌ Failed to get text from server:", data);
-              chrome.runtime.sendMessage({
-                type: "TRANSCRIPT_FETCHED",
-                transcript: "❌ Failed to get text from server.",
+              chrome.storage.local.get(["token"], async (result) => {
+                const token = result.token;
+                if (!token) {
+                  console.warn(
+                    "⚠️ No auth token found in chrome.storage.local"
+                  );
+                }
+
+                try {
+                  const response = await fetch(`${whisperUrl}/transcribe`, {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                    },
+                    body: formData,
+                  });
+
+                  const data = await response.json();
+
+                  if (data && data.transcript) {
+                    window.isInstagramScraping = false;
+
+                    console.log(
+                      "✅ Transcription from server:",
+                      data.transcript.slice(0, 100),
+                      "..."
+                    );
+                    console.log(
+                      "🧮 Estimated token count from server:",
+                      data.estimatedTokens
+                    );
+                    chrome.runtime.sendMessage({
+                      type: "USAGE_UPDATED",
+                      estimatedTokenCount: data.estimatedTokens,
+                    });
+                    chrome.runtime.sendMessage({
+                      type: "TRANSCRIPT_FETCHED",
+                      transcript: data.transcript,
+                      description: window.lastInstagramDescription || "",
+                    });
+                  } else {
+                    console.error("❌ Failed to get text from server:", data);
+                    chrome.runtime.sendMessage({
+                      type: "TRANSCRIPT_FETCHED",
+                      transcript: "❌ Failed to get text from server.",
+                    });
+                  }
+                } catch (error) {
+                  console.error("❌ Error during fetch:", error);
+                  chrome.runtime.sendMessage({
+                    type: "TRANSCRIPT_FETCHED",
+                    transcript: "❌ Error during transcription request.",
+                  });
+                }
               });
             }
-          } catch (error) {
-            console.error("❌ Error during fetch:", error);
-            chrome.runtime.sendMessage({
-              type: "TRANSCRIPT_FETCHED",
-              transcript: "❌ Error during transcription request.",
-            });
-          }
-        });
+          }, 100);
+        };
       };
 
       // ▶️ Start recording first...
@@ -573,10 +602,17 @@
         });
 
         const videoEl = document.querySelector("video");
-        const durationSec =
-          videoEl && videoEl.duration > 0 ? Math.ceil(videoEl.duration) : 5;
-        console.log(`🎙️ Capturing full Instagram audio (${durationSec}s)`);
-        captureAudioFromVideo(durationSec);
+        const durationSeconds =
+          videoEl && videoEl.duration > 0 ? Math.ceil(videoEl.duration) : null;
+
+        if (durationSeconds) {
+          console.log(
+            `🎙️ Capturing full Instagram audio (${durationSeconds}s)`
+          );
+          captureAudioFromVideo(durationSeconds);
+        } else {
+          console.warn("❌ Could not determine video duration.");
+        }
       }
     );
   } else if (isYouTube) {

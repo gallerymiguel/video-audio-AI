@@ -12,6 +12,8 @@ import AuthPage from "./components/AuthPage.jsx" // Adjust the path if needed
 import './App.css';
 import './index.css';
 
+console.log("GraphQL URL from .env:", import.meta.env.VITE_GRAPHQL_URL);
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <Provider store={store}>

@@ -9,7 +9,7 @@ chrome.runtime.onMessage.addListener((request, sender) => {
   if (request.type === "SEND_TO_CHATGPT") {
     console.log("🛎️ Received SEND_TO_CHATGPT:", request);
 
-    const { contentTabId, startTime, endTime } = request;
+    const { contentTabId } = request;
     if (!contentTabId) {
       console.error("❌ No contentTabId provided.");
       return;
@@ -26,49 +26,37 @@ chrome.runtime.onMessage.addListener((request, sender) => {
       }
 
       const url = tab.url;
-      const isYouTubeVideo = !!url.match(/youtube\.com\/(watch\?v=|shorts\/)/);
       const isInstagram = !!url.match(/instagram\.com\/(reels|reel|p)\//);
 
-      if (!isYouTubeVideo && !isInstagram) {
-        console.log("❌ Not a valid YouTube or Instagram page:", url);
+      if (!isInstagram) {
+        console.log("❌ Not a valid Instagram page:", url);
         return;
       }
 
-      if (isYouTubeVideo) {
-        chrome.scripting.executeScript(
-          {
-            target: { tabId: contentTabId },
-            func: (s, e) => {
-              window.transcriptSliceRange = { start: s, end: e };
-            },
-            args: [startTime || "00:00", endTime || "99:59"],
-          },
-          () => {
-            chrome.scripting.executeScript({
-              target: { tabId: contentTabId },
-              files: ["content.js"],
-            });
-          }
-        );
-      } else {
-        // Instagram scrape + audio
-        chrome.scripting.executeScript({
+      console.log("✅ Instagram page detected. Injecting content.js...");
+
+      // Inject the start and end timestamps BEFORE injecting content.js
+      chrome.scripting.executeScript(
+        {
           target: { tabId: contentTabId },
-          files: ["content.js"],
-        });
-      }
+          func: (start, end) => {
+            window.transcriptSliceRange = {
+              start,
+              end,
+            };
+          },
+          args: [request.startTime, request.endTime],
+        },
+        () => {
+          // Now inject content.js AFTER timestamps are set
+          chrome.scripting.executeScript({
+            target: { tabId: contentTabId },
+            files: ["content.js"],
+          });
+        }
+      );
     });
 
-    return;
-  }
-
-  // ─── 0) CHECK_SUBSCRIPTION_STATUS branch ────────────────────
-//   if (user.usageCount + incrementBy > monthlyLimit) {
-//   throw new Error("❌ Monthly usage limit reached. Try again next cycle.");
-// }
-  // ─── 1) CHECK_SUBSCRIPTION_STATUS branch ──────────────────── might use for future
-  if (!isSubscribed && isInstagramVideo) {
-    console.warn("🚫 Blocked Instagram processing: not subscribed");
     return;
   }
 
@@ -253,41 +241,6 @@ chrome.runtime.onMessage.addListener((request, sender) => {
       charCount: finalTranscript.length,
     });
 
-    chrome.storage.local.get("token", ({ token }) => {
-      if (!token) {
-        console.warn("⚠️ No auth token found for usage increment.");
-        return;
-      }
-
-      fetch("https://48b2-136-49-49-188.ngrok-free.app/graphql", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          query: `mutation IncrementUsage($amount: Int!) {
-        incrementUsage(amount: $amount)
-      }`,
-          variables: {
-            amount: estimatedTokenCountHere, // ⛳ replace with actual token count
-          },
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.errors) {
-            console.error("❌ Usage increment failed:", data.errors);
-          } else {
-            console.log("✅ Usage incremented successfully");
-            chrome.runtime.sendMessage({ type: "USAGE_INCREMENTED" });
-          }
-        })
-        .catch((err) => {
-          console.error("❌ Network error during usage increment:", err);
-        });
-    });
-    
     if (request.type === "USAGE_UPDATED") {
       console.log("📊 Usage updated with", request.estimatedTokenCount);
 

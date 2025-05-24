@@ -15,8 +15,18 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "host_permissions": ["https://chatgpt.com/*", "https://48b2-136-49-49-188.ngrok-free.app/*"],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://*.googlevideo.com/*",
+    "https://chatgpt.com/*"
+  ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; connect-src *"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["config.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

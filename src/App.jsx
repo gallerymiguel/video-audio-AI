@@ -304,22 +304,22 @@ function App() {
       setTimestampError("⚡ Still fetching transcript… please wait!");
       return;
     }
+
     setTimestampError("");
     dispatch(setStatus("Fetching transcript..."));
     dispatch(setLoading(true));
-    setHasConverted(true); // ✅ Lock UI state
+    setHasConverted(true);
     setShowAuthButton(false);
-    // Timeout fallback
+
     window._transcriptTimeout = setTimeout(() => {
       dispatch(setLoading(false));
       dispatch(
         setStatus(
-          "❌ No response. Try refreshing YouTube or re-selecting a tab."
+          "❌ No response. Try refreshing the page or re-selecting a tab."
         )
       );
     }, 60000);
 
-    // Format validation: mm:ss or m:ss
     const isValidTime = (str) => /^(\d{1,2}):([0-5]?\d)$/.test(str);
     if (!isValidTime(startTime) || !isValidTime(endTime)) {
       setTimestampError("❌ Please enter timestamps in mm:ss format.");
@@ -327,27 +327,24 @@ function App() {
       return;
     }
 
-    // Convert time to seconds
     const timeToSeconds = (t) => {
       const [min, sec] = t.split(":").map(Number);
       return min * 60 + sec;
     };
 
-    let start = timeToSeconds(startTime);
-    let end = timeToSeconds(endTime);
+    const start = timeToSeconds(startTime);
+    const end = timeToSeconds(endTime);
 
-    // ✅ If both are "00:00", treat it as "get full video"
     if (start >= end) {
       setTimestampError("❌ Start time must be before end time.");
       dispatch(setLoading(false));
       return;
     }
 
-    // Get video duration from the active YouTube/Instagram tab
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const tabId = tabs[0]?.id;
       if (!tabId) {
-        setTimestampError("❌ Could not find active video tab.");
+        setTimestampError("❌ Could not find active tab.");
         dispatch(setLoading(false));
         return;
       }
@@ -357,13 +354,18 @@ function App() {
           target: { tabId },
           func: () => {
             const video = document.querySelector("video");
-            return video ? video.duration : null;
+            return video ? Math.floor(video.duration) : null;
           },
         },
         (results) => {
           const durationSec = results?.[0]?.result;
 
-          // ✅ Treat 00:00 to 00:00 as "full video"
+          if (typeof durationSec !== "number" || durationSec <= 0) {
+            setTimestampError("❌ Unable to detect video duration.");
+            dispatch(setLoading(false));
+            return;
+          }
+
           if (start > durationSec || end > durationSec) {
             setTimestampError(
               "❌ One or both timestamps exceed the video length."
@@ -372,34 +374,12 @@ function App() {
             return;
           }
 
-          if (typeof durationSec === "number") {
-            const duration = Math.floor(durationSec);
-            const formattedEnd = `${Math.floor(duration / 60)}:${String(
-              duration % 60
-            ).padStart(2, "0")}`;
-
-            console.log("🎥 Video duration fetched:", durationSec);
-            console.log("🕒 Setting endTime to:", formattedEnd);
-
-            setVideoDuration(duration);
-            setSliderStart(0);
-            setSliderEnd(duration);
-            setStartTime("00:00");
-            setEndTime(formattedEnd);
-
-            console.log("✅ endTime state now:", formattedEnd);
-          }
-
-          // ✅ Store video data and update sliders
-          setSliderStart(0);
-          setSliderEnd(Math.floor(durationSec));
+          // ✅ Set values if they weren’t already set earlier
           setVideoDuration(durationSec);
-          setTimestampError(""); // ✅ Clear errors if all is good
-
-          // ✅ Finally send to background script
           setLastUsedStart(startTime);
           setLastUsedEnd(endTime);
-          console.log("📤 Sending SEND_TO_CHATGPT from Convert button", {
+
+          console.log("📤 Sending SEND_TO_CHATGPT with:", {
             contentTabId: tabId,
             startTime,
             endTime,
@@ -420,6 +400,7 @@ function App() {
 
   const handleSend = () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tabId = tabs[0]?.id;
       const url = tabs[0]?.url || "";
       const isInstagram = url.includes("instagram.com");
 
@@ -428,7 +409,21 @@ function App() {
         return;
       }
 
-      continueTranscriptFlow(tabs[0]?.id);
+      // 🟢 Inject timestamps into content script
+      chrome.tabs.sendMessage(
+        tabId,
+        {
+          type: "SET_TRANSCRIPT_RANGE",
+          startTime,
+          endTime,
+        },
+        () => {
+          console.log(
+            "✅ transcriptSliceRange sent via message to content script!"
+          );
+          continueTranscriptFlow(tabId); // Continue as usual
+        }
+      );
     });
   };
 
@@ -511,7 +506,7 @@ function App() {
               marginBottom: "10px",
             }}
           >
-            ❌ Couldn't detect video. Please refresh the YouTube page and try
+            ❌ Couldn't detect video. Please refresh the Instagram page and try
             again.
           </p>
         )}
@@ -817,7 +812,7 @@ function App() {
           </p>
 
           <ul className="text-sm text-gray-700 mb-4 space-y-1">
-            <li>✅ YouTube transcripts</li>
+            <li>✅ Instagram transcripts</li>
             <li>✅ Timestamp selection</li>
             <li>🚫 Instagram features</li>
             <li>🚫 Usage cap override</li>

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@apollo/client": "^3.13.8",
+    "@ffmpeg/ffmpeg": "^0.12.15",
     "@reduxjs/toolkit": "^2.7.0",
     "franc-min": "^6.2.0",
     "graphql": "^16.11.0",

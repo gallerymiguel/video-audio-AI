@@ -85,7 +85,7 @@
           type: "video/mp4",
         });
         formData.append("audio", file); // reuse "audio" key for consistency
-        
+
         // Add startTime and endTime to formData (from window.transcriptSliceRange)
         if (window.transcriptSliceRange) {
           formData.append("startTime", window.transcriptSliceRange.start);
@@ -118,6 +118,9 @@
 
             const data = await response.json();
 
+            const description = await getInstagramDescription();
+            console.log("📝 Scraped Instagram description:", description);
+
             if (data && data.transcript) {
               window.isInstagramScraping = false;
 
@@ -137,7 +140,7 @@
               chrome.runtime.sendMessage({
                 type: "TRANSCRIPT_FETCHED",
                 transcript: data.transcript,
-                description: window.lastInstagramDescription || "",
+                description: description || "",
               });
             } else {
               console.error("❌ Failed to get text from server:", data);
@@ -220,53 +223,6 @@
     } catch (err) {
       console.error("❌ Error scraping Instagram description:", err);
       return "❌ Error scraping Instagram description.";
-    }
-  }
-
-  async function getInstagramCaptions() {
-    try {
-      console.log("🔍 Attempting to scrape Instagram caption...");
-
-      const mainVideo = document.querySelector("video");
-      if (!mainVideo) {
-        console.log("❌ No video element found.");
-        return "❌ No video found.";
-      }
-
-      let container = mainVideo.closest("article") || mainVideo.closest("div");
-      if (!container) {
-        console.log("❌ No container found near video.");
-        return "❌ No captions found.";
-      }
-
-      const spans = Array.from(container.querySelectorAll("span"));
-      let result = "";
-
-      for (const span of spans) {
-        const text = span.innerText?.trim();
-        if (
-          text &&
-          text.length > 3 &&
-          !text.startsWith("#") &&
-          !text.includes("·") &&
-          !text.toLowerCase().includes("original audio") &&
-          !text.toLowerCase().includes("clickupcomedy")
-        ) {
-          result = text;
-          break;
-        }
-      }
-
-      if (!result) {
-        console.log("❌ No clean caption found.");
-        return "❌ No clean caption found.";
-      }
-
-      console.log("📝 Instagram caption found:", result);
-      return result;
-    } catch (err) {
-      console.error("❌ Error extracting Instagram caption:", err);
-      return "❌ Failed to extract Instagram caption.";
     }
   }
 

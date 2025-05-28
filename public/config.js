@@ -1,8 +1,5 @@
 // config.js
 
-console.log("🧾 config.js loaded into page");
-
-
 window.postMessage(
   {
     type: "CONFIG_DATA",
@@ -14,6 +11,3 @@ window.postMessage(
   },
   "*"
 );
-
-
-console.log("🧾 config.js loaded into page");

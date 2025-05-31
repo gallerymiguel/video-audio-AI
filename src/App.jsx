@@ -743,6 +743,7 @@ function App() {
                 console.warn("⚠️ Failed to refetch subscription:", err.message);
               }
             }}
+            onClose={() => setShowAuth(false)}  
           />
         </div>
       )}

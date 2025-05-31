@@ -17,3 +17,9 @@ export const START_SUBSCRIPTION = gql`
     startSubscription
   }
 `;
+
+const REQUEST_PASSWORD_RESET = gql`
+  mutation RequestPasswordReset($email: String!) {
+    requestPasswordReset(email: $email)
+  }
+`;

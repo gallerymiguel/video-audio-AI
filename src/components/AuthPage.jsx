@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import LoginForm from "./LoginForm";
 import RegisterForm from "./RegisterForm";
+import ForgotPasswordForm from "./ForgotPasswordForm"; // Add this import
 
 const AuthPage = ({ onLoginSuccess, onClose }) => {
-  const [isLogin, setIsLogin] = useState(true);
+  const [view, setView] = useState("login"); // 'login' | 'register' | 'forgot'
 
   return (
     <div className="relative bg-white p-4 rounded-lg shadow-md">
@@ -15,18 +16,37 @@ const AuthPage = ({ onLoginSuccess, onClose }) => {
         ❌
       </button>
 
-      {isLogin ? (
-        <LoginForm onLoginSuccess={onLoginSuccess} />
-      ) : (
+      {/* Render the current form based on view */}
+      {view === "login" && (
+        <LoginForm
+          onLoginSuccess={onLoginSuccess}
+          onForgotPassword={() => setView("forgot")}
+        />
+      )}
+
+      {view === "register" && (
         <RegisterForm onLoginSuccess={onLoginSuccess} />
       )}
 
-      <button
-        onClick={() => setIsLogin(!isLogin)}
-        className="mt-4 text-blue-600 hover:underline"
-      >
-        {isLogin ? "Don't have an account? Register" : "Already have an account? Login"}
-      </button>
+      {view === "forgot" && (
+        <ForgotPasswordForm
+          onBack={() => setView("login")} // Add a back button in the form
+        />
+      )}
+
+      {/* Toggle between Login/Register */}
+      {view !== "forgot" && (
+        <button
+          onClick={() =>
+            setView((prev) => (prev === "login" ? "register" : "login"))
+          }
+          className="mt-4 text-blue-600 hover:underline"
+        >
+          {view === "login"
+            ? "Don't have an account? Register"
+            : "Already have an account? Login"}
+        </button>
+      )}
     </div>
   );
 };

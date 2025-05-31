@@ -4,7 +4,6 @@
 let lastSourceLangCode = "en";
 let lastVideoDescription = "";
 
-// background.js
 chrome.runtime.onMessage.addListener((request, sender) => {
   if (request.type === "SEND_TO_CHATGPT") {
 

@@ -88,11 +88,8 @@ function App() {
   } = useUsageCount();
   const [localUsage, setLocalUsage] = useState(usageCount);
 
-  console.log("📊 usageCount from backend:", usageCount);
-
   useEffect(() => {
     if (authToken) {
-      console.log("✅ UI updated: User is logged in with token");
     }
   }, [authToken]);
 
@@ -102,14 +99,13 @@ function App() {
   }, []);
 
   useEffect(() => {
-    setLocalUsage(usageCount); // update local when hook changes
+    setLocalUsage(usageCount);
   }, [usageCount]);
 
   useEffect(() => {
     const listener = (message) => {
       if (message.type === "TRIGGER_USAGE_REFETCH") {
-        console.log("🔁 Usage refetch triggered by background.");
-        refetch(); // ✅ will update usageCount state in real-time
+        refetch();
       }
     };
 
@@ -126,11 +122,6 @@ function App() {
       }
     });
   }, []);
-
-  useEffect(() => {
-    console.log("🌐 Language state has changed:", selectedLanguage);
-  }, [selectedLanguage]);
-  console.log("📤 Sending transcript with language:", selectedLanguage);
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -157,20 +148,18 @@ function App() {
                 duration % 60
               ).padStart(2, "0")}`;
 
-              console.log("🎥 Video duration ready:", durationSec);
               setVideoDuration(duration);
               setSliderStart(0);
               setSliderEnd(duration);
               setStartTime("00:00");
               setEndTime(formattedEnd);
 
-              setWaitingForVideo(false); // 🟢 STOP waiting after successful fetch
+              setWaitingForVideo(false);
             } else if (attempt < 35) {
               setTimeout(() => tryGetDuration(attempt + 1), 150);
             } else {
-              console.warn("❌ Could not fetch video duration after retries.");
-              setWaitingForVideo(false); // 🛑 Also stop waiting if totally fail
-              setVideoError(true); // 🔥 Set the error flag
+              setWaitingForVideo(false);
+              setVideoError(true);
             }
           }
         );
@@ -183,24 +172,16 @@ function App() {
   useEffect(() => {
     const listener = (message, sender, sendResponse) => {
       if (message.type === "TRANSCRIPT_READY") {
-        console.log("📥 Received TRANSCRIPT_READY in popup:", message);
         if (message.description) {
-          console.log("📥 Received description in popup:", message.description);
           dispatch(setDescription(message.description));
           refetchUsage();
         }
         if (typeof message.transcript === "string") {
-          console.log(
-            "✅ Transcript received:",
-            message.transcript.length,
-            "chars"
-          );
           clearTimeout(window._transcriptTimeout);
           dispatch(setLoading(false));
           dispatch(setTranscript(message.transcript));
 
           const language = message.language || "English";
-          console.log("🌐 Language received with transcript:", language);
           localStorage.setItem("lastTranscriptLanguage", language);
 
           if (message.transcript.length > 3000) {
@@ -213,23 +194,16 @@ function App() {
             dispatch(setStatus("✅ Transcript fetched! Ready to send."));
           }
         } else {
-          console.log("❌ Invalid transcript received:", message.transcript);
           dispatch(setStatus("❌ Failed to fetch transcript."));
           dispatch(setLoading(false));
         }
       }
 
       if (message.type === "YOUTUBE_TRANSCRIPT_DONE") {
-        console.log("✅ Final send complete, char count:", message.charCount);
         dispatch(setLoading(false));
         dispatch(setStatus("✅ Transcript sent to ChatGPT!"));
 
-        refetch().then(({ data }) => {
-          console.log(
-            "🔁 Refetched usage count from backend:",
-            data?.getUsageCount
-          );
-        });
+        refetch().then(({ data }) => {});
 
         setTimeout(() => dispatch(setStatus("")), 4000);
 
@@ -243,7 +217,6 @@ function App() {
 
       // ✅ Real-time usage count update
       if (message.type === "USAGE_INCREMENTED") {
-        console.log("🔄 Refetching usage count after increment...");
         refetch(); // from useUsageCount
       }
     };
@@ -379,13 +352,6 @@ function App() {
           setLastUsedStart(startTime);
           setLastUsedEnd(endTime);
 
-          console.log("📤 Sending SEND_TO_CHATGPT with:", {
-            contentTabId: tabId,
-            startTime,
-            endTime,
-            selectedTabId,
-          });
-
           chrome.runtime.sendMessage({
             type: "SEND_TO_CHATGPT",
             contentTabId: tabId,
@@ -418,9 +384,6 @@ function App() {
           endTime,
         },
         () => {
-          console.log(
-            "✅ transcriptSliceRange sent via message to content script!"
-          );
           continueTranscriptFlow(tabId); // Continue as usual
         }
       );
@@ -531,7 +494,6 @@ function App() {
       <button
         onClick={async () => {
           setShowSettings(!showSettings);
-          console.log("🔄 Manually refreshing usage count...");
           const result = await refetchUsage();
           setLocalUsage(result.data?.getUsageCount ?? 0);
         }}
@@ -723,18 +685,6 @@ function App() {
           <button
             disabled={!rawTranscript || rawTranscript.startsWith("❌")}
             onClick={() => {
-              console.log("📤 Sending with description:", description);
-              console.log("✅ Checkbox checked?", includeDescription);
-              console.log("📤 About to send to ChatGPT:");
-              console.log("Transcript:", rawTranscript);
-              console.log("Description:", description);
-              console.log(
-                "Include description checkbox checked:",
-                includeDescription
-              );
-
-              console.log("📨 Sending SEND_TRANSCRIPT_TO_CHATGPT message...");
-
               chrome.runtime.sendMessage({
                 type: "SEND_TRANSCRIPT_TO_CHATGPT",
                 transcript: rawTranscript,
@@ -746,11 +696,7 @@ function App() {
 
               dispatch(setStatus("Fetching transcript..."));
               dispatch(setLoading(true));
-              console.log("📦 Description being sent:", description);
               setTimeout(() => {
-                console.log(
-                  "🔁 Refetching usage count after sending transcript..."
-                );
                 refetch();
               }, 1500); // wait a moment to let backend update
             }}
@@ -785,7 +731,6 @@ function App() {
         <div className="absolute top-10 left-2 right-2 p-4 z-50">
           <AuthPage
             onLoginSuccess={async (token) => {
-              console.log("✅ onLoginSuccess triggered with token:", token);
               localStorage.setItem("token", token);
               chrome.storage.local.set({ token });
               setAuthToken(token);
@@ -794,11 +739,11 @@ function App() {
 
               try {
                 await refetch(); // ✅ this triggers a GraphQL re-query after login
-                console.log("🔄 Refetched subscription after login");
               } catch (err) {
                 console.warn("⚠️ Failed to refetch subscription:", err.message);
               }
             }}
+            onClose={() => setShowAuth(false)}  
           />
         </div>
       )}

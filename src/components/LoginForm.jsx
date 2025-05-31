@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useMutation } from "@apollo/client";
 import { LOGIN_MUTATION } from "../graphql/mutations"; // Adjust path as needed
+import ForgotPasswordForm from "./ForgotPasswordForm"; // Adjust path as needed
 
-const LoginForm = ({ onLoginSuccess }) => {
+const LoginForm = ({ onLoginSuccess, onForgotPassword }) => {
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [rememberMe, setRememberMe] = useState(false);
   const [login, { loading, error }] = useMutation(LOGIN_MUTATION);
@@ -67,6 +68,7 @@ const LoginForm = ({ onLoginSuccess }) => {
     >
       <h2 className="text-2xl font-bold text-center">Login</h2>
 
+      {/* Email Input */}
       <input
         name="email"
         type="email"
@@ -77,6 +79,7 @@ const LoginForm = ({ onLoginSuccess }) => {
         required
       />
 
+      {/* Password Input */}
       <input
         name="password"
         type="password"
@@ -87,6 +90,7 @@ const LoginForm = ({ onLoginSuccess }) => {
         required
       />
 
+      {/* Remember Me */}
       <label className="flex items-center space-x-2 text-sm">
         <input
           type="checkbox"
@@ -97,12 +101,22 @@ const LoginForm = ({ onLoginSuccess }) => {
         <span>Remember Me</span>
       </label>
 
+      {/* Login Button */}
       <button
         type="submit"
         disabled={loading}
         className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition"
       >
         {loading ? "Logging in..." : "Login"}
+      </button>
+
+      {/* Forgot Password Link */}
+      <button
+        type="button"
+        onClick={onForgotPassword}
+        className="text-sm text-blue-500 hover:underline mt-2"
+      >
+        Forgot Password?
       </button>
 
       {error && <p className="text-red-500 text-sm">⚠️ {error.message}</p>}

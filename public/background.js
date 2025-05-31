@@ -4,10 +4,8 @@
 let lastSourceLangCode = "en";
 let lastVideoDescription = "";
 
-// background.js
 chrome.runtime.onMessage.addListener((request, sender) => {
   if (request.type === "SEND_TO_CHATGPT") {
-    console.log("🛎️ Received SEND_TO_CHATGPT:", request);
 
     const { contentTabId } = request;
     if (!contentTabId) {
@@ -29,11 +27,8 @@ chrome.runtime.onMessage.addListener((request, sender) => {
       const isInstagram = !!url.match(/instagram\.com\/(reels|reel|p)\//);
 
       if (!isInstagram) {
-        console.log("❌ Not a valid Instagram page:", url);
         return;
       }
-
-      console.log("✅ Instagram page detected. Injecting content.js...");
 
       // Inject the start and end timestamps BEFORE injecting content.js
       chrome.scripting.executeScript(
@@ -82,28 +77,22 @@ chrome.runtime.onMessage.addListener((request, sender) => {
       (results) => {
         const flags = results?.[0]?.result;
         if (!flags) {
-          console.log("❌ Failed to get flags from tab.");
+          console.warn("❌ Failed to get flags from tab.");
           return;
         }
 
         const { isAudioCaptureInProgress, isInstagramScraping } = flags;
         if (isInstagramScraping) {
-          console.log(
-            "⚡ Detected Instagram scraping, ignoring early caption."
-          );
           return;
         }
         if (isAudioCaptureInProgress) {
-          console.log("⚡ Still recording audio, ignoring transcript.");
           return;
         }
 
         // Store the actual caption language for next step
         lastSourceLangCode =
           request.sourceLangCode || request.language || lastSourceLangCode;
-        console.log("🌐 Stored sourceLangCode =", lastSourceLangCode);
 
-        console.log("✅ Final transcript ready, sending to popup.");
         chrome.runtime.sendMessage({
           type: "TRANSCRIPT_READY",
           transcript: request.transcript,
@@ -117,7 +106,6 @@ chrome.runtime.onMessage.addListener((request, sender) => {
 
   // ─── 3) SEND_TRANSCRIPT_TO_CHATGPT branch ───────────────────
   if (request.type === "SEND_TRANSCRIPT_TO_CHATGPT") {
-    console.log("📤 SEND_TRANSCRIPT_TO_CHATGPT received:", request);
 
     // 1) Pull out the needed data
     const {
@@ -180,17 +168,10 @@ chrome.runtime.onMessage.addListener((request, sender) => {
 
     // 5) Choose prompt based on source vs target
     const sourceLangCode = lastSourceLangCode;
-    console.log(
-      "🌐 sourceLangCode =",
-      sourceLangCode,
-      "targetLangCode =",
-      targetLangCode
-    );
     const finalDescription = description || lastVideoDescription;
 
     let prompt;
     let finalTranscript = transcript;
-    console.log("🧾 Final description used:", finalDescription);
     if (includeDescription && finalDescription) {
       finalTranscript += `\n\n[DESCRIPTION]\n${finalDescription}`;
     }
@@ -199,18 +180,11 @@ chrome.runtime.onMessage.addListener((request, sender) => {
       prompt = (summaryPrompts[targetLangCode] || summaryPrompts.en)(
         finalTranscript
       );
-      console.log("⚙️ Using summary prompt for", targetLangCode);
     } else {
       const srcName = languageNameMap[sourceLangCode] || sourceLangCode;
       prompt = (translatePrompts[targetLangCode] || translatePrompts.en)(
         finalTranscript,
         srcName
-      );
-      console.log(
-        "⚙️ Using translate prompt from",
-        sourceLangCode,
-        "to",
-        targetLangCode
       );
     }
 
@@ -235,18 +209,11 @@ chrome.runtime.onMessage.addListener((request, sender) => {
     });
 
     // 7) Let popup know we’re done
-    console.log("📤 SEND_TRANSCRIPT_TO_CHATGPT received:", request);
     chrome.runtime.sendMessage({
       type: "YOUTUBE_TRANSCRIPT_DONE",
       charCount: finalTranscript.length,
     });
-
-    if (request.type === "USAGE_UPDATED") {
-      console.log("📊 Usage updated with", request.estimatedTokenCount);
-
-      chrome.runtime.sendMessage({ type: "TRIGGER_USAGE_REFETCH" });
-    }
-
+    
     return;
   }
 });

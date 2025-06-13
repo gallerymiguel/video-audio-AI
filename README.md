@@ -1,112 +1,96 @@
+# 📽️ ChatGPT Video-Transcript Assistant (Chrome Extension)
 
-# 📽️ ChatGPT Video Transcript Assistant (Chrome Extension)
-
-A powerful Chrome extension that extracts video transcripts from YouTube and Instagram, slices timestamps, and sends content directly to ChatGPT for summarization or translation. Also supports subscription management with Stripe and backend Whisper transcription via Express.
+Chrome extension that grabs **Instagram Reels / Shorts** transcripts, slices timestamps, and pipes everything to **ChatGPT** for instant summarization or translation.   
+Pro version records audio + runs Whisper transcription on your server. Stripe handles subscriptions & limits.
 
 ---
 
 ## 🚀 Features
 
-- ⏱️ Select custom start/end times from any video
-- 🧠 Send transcripts to ChatGPT with optional description
-- 🎙️ Audio recording + Whisper API for Instagram videos
-- 🌐 Multilingual caption support
-- 🔐 Token usage tracking & monthly limits
-- 💳 Stripe subscription to unlock Instagram features
+| Core | Pro (Stripe) |
+|------|--------------|
+| ⏱️ Select custom start / end points | 🎙️ Record Instagram audio & send to Whisper |
+| 🧠 One-click “Summarize with ChatGPT” | 🌐 Multilingual captions |
+| 🔐 Token usage tracking & monthly limits | |
 
 ---
 
-## 🧩 Tech Stack
+## 📦 Repositories
 
-- **Frontend**: React + Redux + Tailwind
-- **Chrome Extension**: Manifest V3, background/content/popup
-- **Backend**: Node.js + Express + GraphQL + Whisper
-- **Payments**: Stripe (Checkout + Webhooks)
-- **Authentication**: JWT
-- **Deployment**: Render (Dockerized), GitHub Actions (CI/CD)
+| Part | GitHub link | Stack |
+|------|-------------|-------|
+| **Chrome extension (frontend)** | `https://github.com/gallerymiguel/video-audio-AI` | React + Redux, Tailwind, Manifest v3 |
+| **GraphQL back-end** | `https://github.com/gallerymiguel/chrome-extension-backend` | Node, Express, Apollo GraphQL, MongoDB |
+| **Whisper back-end** | `https://github.com/gallerymiguel/my-whisper-server` | Node, Express, OpenAI Whisper |
+
+**GraphQL back-end Render** | `https://chrome-extension-backend-iubp.onrender.com/`
+**Whisper back-end Render** | `https://whisper-server-ajdt.onrender.com/`
+---
+
+## 🧩 Tech Stack (extension)
+
+| Layer | Tech |
+|-------|------|
+| UI       | React + Redux, Tailwind, Vite |
+| Browser  | Chrome Extension Manifest v3 (popup / background / content scripts) |
+| Auth     | JWT stored in chrome.storage.sync |
 
 ---
 
-## 🛠️ Getting Started
-
-### 1. Clone the repo
+## 🛠️ Quick Start (Dev)
 
 ```bash
-git clone https://github.com/yourusername/video-transcript-extension.git
-cd video-transcript-extension
-```
+# 1 Clone extension repo
+git clone git@github.com:gallerymiguel/video-audio-AI.git
+cd video-audio-AI && npm i
 
-### 2. Install dependencies
+# 2 Env vars
+cp .env      # edit endpoints & Stripe key
 
-```bash
-npm install
-```
-
-### 3. Add your `.env` file
-
-Create a `.env` file in the root of your frontend and backend with:
-
-```env
-# Frontend
-VITE_WHISPER_SERVER_URL=http://localhost:3000
-VITE_GRAPHQL_URL=http://localhost:4000/graphql
-VITE_STRIPE_PUBLIC_KEY=your-stripe-pk
-
-# Backend
-OPENAI_API_KEY=your-openai-key
-STRIPE_SECRET_KEY=your-stripe-secret
-BACKEND_GRAPHQL_URL=http://localhost:4000/graphql
-```
-
-### 4. Build the extension
-
-```bash
+# 3 Build and load into Chrome
 npm run build
+# then drag dist/ into chrome://extensions  (enable Dev mode)
 ```
 
-Load `dist/` folder into `chrome://extensions` (enable Developer Mode).
+Back-ends have their own READMEs.
 
 ---
 
-## 📦 Folder Structure
+## 📁 Folder Structure (extension)
 
 ```
-├── public/
-│   ├── manifest.json
-│   ├── background.js
-│   ├── content.js
-│   └── config.js
-├── src/
-│   ├── App.jsx
-│   ├── redux/
-│   └── components/
-├── server/
-│   ├── whisper-server.js
-│   └── graphql-server.js
-├── .env
-├── Dockerfile
-└── README.md
+public/
+  ├─ manifest.json
+  ├─ background.js
+  └─ content.js
+src/
+  ├─ App.jsx
+  ├─ hooks/
+  ├─ redux/
+  └─ components/
+.env
+README.md
 ```
 
 ---
 
-## 🔒 Security Notes
+## 🔒 Security Guidelines
 
-- Ensure `config.js` doesn't expose secrets (only URLs)
-- Use `.env` for all API keys and backend endpoints
-- Never hardcode tokens or keys into content/background scripts
-
----
-
-## 🧪 TODO
-
-- [ ] CI/CD with GitHub Actions
-- [ ] Replace `localhost` with production URLs
-- [ ] Add Stripe Webhook verification
-- [ ] Add user dashboard for token tracking
+* Never commit API keys; keep them in `.env` (already git-ignored).  
+* Content & background scripts only send **Bearer tokens**, never secrets.  
+* Stripe webhooks verified with signature (see back-end README).
 
 ---
 
-## 🧠 Credits
+## 🧱 Roadmap / TODO
 
-Built with love by Miguel Urdiales — optimizing video learning with AI ❤️
+- [ ] CI pipeline: lint → unit tests  
+- [ ] Replace localhost URLs with Render prod URLs  
+- [ ] User dashboard: view token balance & Stripe invoices  
+- [ ] Migrate MongoDB → MariaDB if back-end switches
+
+---
+
+### 🧠 Built & maintained by **Miguel Urdiales**
+
+<small>Video learning, optimized by AI ❤️</small>

@@ -1,11 +1,7 @@
 import { useState } from "react";
-import { useMutation, gql } from "@apollo/client";
+import { useMutation } from "@apollo/client";
+import { REQUEST_PASSWORD_RESET } from "../graphql/mutations";
 
-const REQUEST_PASSWORD_RESET = gql`
-  mutation RequestPasswordReset($email: String!) {
-    requestPasswordReset(email: $email)
-  }
-`;
 
 export default function ForgotPasswordForm({ onBack }) {
   const [email, setEmail] = useState("");

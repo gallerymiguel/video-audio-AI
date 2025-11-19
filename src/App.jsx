@@ -12,6 +12,9 @@ import useSubscriptionStatus, {
   useStartSubscription,
 } from "./hooks/useSubscriptionStatus";
 import useUsageCount from "./hooks/useUsageCount";
+import SettingsPanel from "./components/SettingsPanel";
+import Toast from "./components/Toast";
+import ConfirmModal from "./components/ConfirmModal";
 
 const styleTag = document.createElement("style");
 styleTag.textContent = `
@@ -87,6 +90,9 @@ function App() {
     refetch: refetchUsage,
   } = useUsageCount();
   const [localUsage, setLocalUsage] = useState(usageCount);
+  const [toastMessage, setToastMessage] = useState(null);
+  const [confirmMessage, setConfirmMessage] = useState(null);
+  // This function handles what happens when the user confirms the modal action
 
   useEffect(() => {
     if (authToken) {
@@ -392,72 +398,23 @@ function App() {
 
   return (
     <div className="w-[320px] h-[500px] bg-gray-100 p-4">
-      {showSettings && (
-        <div className="absolute top-0 left-0 w-full h-full bg-white shadow-lg z-50 animate-slide-in p-4">
-          <h2 className="text-lg font-bold mb-4">Settings</h2>
+      <SettingsPanel
+        showSettings={showSettings}
+        setShowSettings={setShowSettings}
+        selectedLanguage={selectedLanguage}
+        setSelectedLanguage={setSelectedLanguage}
+        authToken={authToken}
+        isSubscribed={isSubscribed}
+        checkoutLoading={checkoutLoading}
+        initiateCheckout={initiateCheckout}
+        handleLogout={handleLogout}
+        usageCount={usageCount}
+        usageLoading={usageLoading}
+        setToastMessage={setToastMessage}
+        setConfirmMessage={setConfirmMessage}
+      />
+      <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
 
-          <label className="block mb-2 text-sm font-semibold">
-            Select Language
-          </label>
-          <select
-            value={selectedLanguage}
-            onChange={(e) => {
-              const lang = e.target.value;
-              setSelectedLanguage(lang);
-              chrome.storage.local.set({ preferredLanguage: lang });
-            }}
-            className="w-full p-2 border border-gray-300 rounded-lg"
-          >
-            <option value="en">English</option>
-            <option value="es">Spanish</option>
-            <option value="fr">French</option>
-            <option value="de">German</option>
-            <option value="ja">Japanese</option>
-            <option value="ko">Korean</option>
-          </select>
-
-          <button
-            onClick={() => setShowSettings(false)}
-            className="absolute top-2 right-2 text-gray-500 hover:text-black"
-          >
-            ❌
-          </button>
-
-          {authToken && (
-            <>
-              {!isSubscribed && (
-                <button
-                  onClick={initiateCheckout}
-                  disabled={checkoutLoading}
-                  className="mt-4 w-full bg-yellow-400 text-black py-2 rounded-lg font-semibold hover:bg-yellow-500 transition"
-                >
-                  {checkoutLoading
-                    ? "Redirecting..."
-                    : "🔓 Upgrade to Unlock Instagram"}
-                </button>
-              )}
-
-              <button
-                onClick={handleLogout}
-                className="mt-4 w-full bg-red-600 text-white py-2 rounded-lg shadow hover:bg-red-700"
-              >
-                Sign Out
-              </button>
-
-              {authToken && isSubscribed && !usageLoading && (
-                <div className="mt-4 text-sm text-center text-gray-700">
-                  🔢 API Usage: <strong>{usageCount}</strong> / 8000 tokens
-                  {usageCount >= 6000 && (
-                    <p className="text-red-600 mt-1 font-semibold">
-                      ⚠️ You're nearing your monthly limit!
-                    </p>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
       <div className={`fade-in-out ${videoError ? "show" : ""}`}>
         {videoError && (
           <p
@@ -743,7 +700,7 @@ function App() {
                 console.warn("⚠️ Failed to refetch subscription:", err.message);
               }
             }}
-            onClose={() => setShowAuth(false)}  
+            onClose={() => setShowAuth(false)}
           />
         </div>
       )}

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useMutation } from "@apollo/client";
 import { LOGIN_MUTATION } from "../graphql/mutations"; // Adjust path as needed
-import ForgotPasswordForm from "./ForgotPasswordForm"; // Adjust path as needed
 
 const LoginForm = ({ onLoginSuccess, onForgotPassword }) => {
   const [formData, setFormData] = useState({ email: "", password: "" });

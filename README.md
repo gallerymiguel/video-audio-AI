@@ -1,21 +1,21 @@
-# 📽️ ChatGPT Video-Transcript Assistant (Chrome Extension)
+# ChatGPT Video-Transcript Assistant (Chrome Extension)
 
 Chrome extension that grabs **Instagram Reels / Shorts** transcripts, slices timestamps, and pipes everything to **ChatGPT** for instant summarization or translation.   
 Pro version records audio + runs Whisper transcription on your server. Stripe handles subscriptions & limits.
 
 ---
 
-## 🚀 Features
+## Features
 
 | Core | Pro (Stripe) |
 |------|--------------|
-| ⏱️ Select custom start / end points | 🎙️ Record Instagram audio & send to Whisper |
-| 🧠 One-click “Summarize with ChatGPT” | 🌐 Multilingual captions |
-| 🔐 Token usage tracking & monthly limits | |
+| Select custom start / end points | Record Instagram audio & send to Whisper |
+| One-click “Summarize with ChatGPT” | Multilingual captions |
+| Token usage tracking & monthly limits | |
 
 ---
 
-## 📦 Repositories
+## Repositories
 
 | Part | GitHub link | Stack |
 |------|-------------|-------|
@@ -27,7 +27,7 @@ Pro version records audio + runs Whisper transcription on your server. Stripe ha
 **Whisper back-end Render** | `https://whisper-server-ajdt.onrender.com/`
 ---
 
-## 🧩 Tech Stack (extension)
+## Tech Stack (extension)
 
 | Layer | Tech |
 |-------|------|
@@ -37,7 +37,7 @@ Pro version records audio + runs Whisper transcription on your server. Stripe ha
 
 ---
 
-## 🛠️ Quick Start (Dev)
+## Quick Start (Dev)
 
 ```bash
 # 1 Clone extension repo
@@ -56,7 +56,7 @@ Back-ends have their own READMEs.
 
 ---
 
-## 📁 Folder Structure (extension)
+## Folder Structure (extension)
 
 ```
 public/
@@ -74,7 +74,7 @@ README.md
 
 ---
 
-## 🔒 Security Guidelines
+## Security Guidelines
 
 * Never commit API keys; keep them in `.env` (already git-ignored).  
 * Content & background scripts only send **Bearer tokens**, never secrets.  
@@ -82,7 +82,7 @@ README.md
 
 ---
 
-## 🧱 Roadmap / TODO
+## Roadmap / TODO
 
 - [ ] CI pipeline: lint → unit tests  
 - [ ] Replace localhost URLs with Render prod URLs  
@@ -91,6 +91,6 @@ README.md
 
 ---
 
-### 🧠 Built & maintained by **Miguel Urdiales**
+### Built & maintained by **Miguel Urdiales**
 
-<small>Video learning, optimized by AI ❤️</small>
+<small>Video learning, optimized by AI </small>

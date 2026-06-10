@@ -462,6 +462,11 @@ function App() {
   };
 
   const handleGenerateAiSummary = () => {
+    if (!authToken) {
+      setAiSummaryError("Log in to generate AI summaries.");
+      return;
+    }
+
     if (!rawTranscript || rawTranscript.startsWith("❌")) {
       setAiSummaryError("Please fetch a transcript before generating a summary.");
       return;
@@ -760,6 +765,7 @@ function App() {
           <button
             disabled={
               aiSummaryLoading ||
+              !authToken ||
               !rawTranscript ||
               rawTranscript.startsWith("❌")
             }
@@ -768,6 +774,12 @@ function App() {
           >
             {aiSummaryLoading ? "Generating Summary..." : "Generate AI Summary"}
           </button>
+
+          {!authToken && (
+            <p className="text-xs text-gray-700 font-semibold mb-3">
+              Log in to generate AI summaries.
+            </p>
+          )}
 
           {aiSummaryError && (
             <p className="text-xs text-red-600 font-semibold mb-3">

@@ -1,8 +1,10 @@
 (() => {
   // Detect platform
+  //========================
   const isInstagramReel = window.location.href.includes("instagram.com/reels/");
   const isInstagramPost = window.location.href.includes("instagram.com/p/");
   const isInstagram = isInstagramReel || isInstagramPost;
+  //========================
 
   let CONFIG = null;
 
@@ -99,9 +101,7 @@
           try {
             const response = await fetch(`${whisperUrl}/transcribe`, {
               method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
               body: formData,
             });
 

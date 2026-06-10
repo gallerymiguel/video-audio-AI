@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import {
   setStatus,
@@ -15,6 +15,7 @@ import useUsageCount from "./hooks/useUsageCount";
 import SettingsPanel from "./components/SettingsPanel";
 import Toast from "./components/Toast";
 import ConfirmModal from "./components/ConfirmModal";
+import { generateAiSummary } from "./api/aiSummary";
 
 const styleTag = document.createElement("style");
 styleTag.textContent = `
@@ -36,6 +37,27 @@ function parseTimeToSeconds(str) {
   return minutes * 60 + seconds;
 }
 
+function detectPlatform(url = "") {
+  if (url.includes("instagram.com")) return "Instagram";
+  if (url.includes("youtube.com") || url.includes("youtu.be")) return "YouTube";
+  return "Unknown";
+}
+
+function SummaryList({ title, items }) {
+  if (!items?.length) return null;
+
+  return (
+    <div className="mt-2">
+      <p className="text-xs font-semibold text-gray-700">{title}</p>
+      <ul className="list-disc pl-4 text-xs text-gray-700 space-y-1">
+        {items.map((item, index) => (
+          <li key={`${title}-${index}`}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 const fadeStyleTag = document.createElement("style");
 fadeStyleTag.textContent = `
 .fade-in-out {
@@ -49,6 +71,7 @@ fadeStyleTag.textContent = `
 document.head.appendChild(fadeStyleTag);
 
 function App() {
+  // Progress bar (time-based estimate)
   const dispatch = useDispatch();
   const status = useSelector((state) => state.transcript.status);
   const loading = useSelector((state) => state.transcript.loading);
@@ -93,6 +116,13 @@ function App() {
   const [toastMessage, setToastMessage] = useState(null);
   const [confirmMessage, setConfirmMessage] = useState(null);
   // This function handles what happens when the user confirms the modal action
+  const [progress, setProgress] = useState(0);
+  const [aiSummary, setAiSummary] = useState(null);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [aiSummaryError, setAiSummaryError] = useState("");
+  const progressIntervalRef = useRef(null);
+  const progressStartRef = useRef(0);
+  const progressExpectedMsRef = useRef(0);
 
   useEffect(() => {
     if (authToken) {
@@ -185,6 +215,8 @@ function App() {
         if (typeof message.transcript === "string") {
           clearTimeout(window._transcriptTimeout);
           dispatch(setLoading(false));
+          stopProgress(100);
+          setTimeout(() => setProgress(0), 800);
           dispatch(setTranscript(message.transcript));
 
           const language = message.language || "English";
@@ -230,6 +262,7 @@ function App() {
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, []);
+//=========================
 
   // Load ChatGPT tabs + previously selected tab on popup open
   useEffect(() => {
@@ -246,6 +279,7 @@ function App() {
       }
     });
   }, []);
+//=========================
 
   useEffect(() => {
     const newStart = parseTimeToSeconds(startTime);
@@ -277,15 +311,44 @@ function App() {
     setShowAuthButton(true);
   };
   // Send message to ChatGPT tab
+  const stopProgress = (finalValue = null) => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+    if (finalValue !== null) setProgress(finalValue);
+  };
+
+  const startProgress = (expectedSeconds) => {
+    // Always reset
+    stopProgress(0);
+
+    // Minimum time so short clips don't instantly race to 95%
+    const expectedMs = Math.max(12_000, Math.floor(expectedSeconds * 1000));
+
+    progressStartRef.current = Date.now();
+    progressExpectedMsRef.current = expectedMs;
+
+    progressIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - progressStartRef.current;
+      const pct = Math.min(95, (elapsed / progressExpectedMsRef.current) * 95);
+
+      setProgress(pct);
+
+      // If we exceed expected time, hold at 95% (we'll jump to 100 when done)
+      // You can optionally "creep" after a while, but keep it simple for now.
+    }, 200);
+  };
 
   const continueTranscriptFlow = () => {
     if (loading) {
       setTimestampError("⚡ Still fetching transcript… please wait!");
+      stopProgress(0);
       return;
     }
 
     setTimestampError("");
-    dispatch(setStatus("Fetching transcript..."));
+    dispatch(setStatus(""));
     dispatch(setLoading(true));
     setHasConverted(true);
     setShowAuthButton(false);
@@ -297,6 +360,7 @@ function App() {
           "❌ No response. Try refreshing the page or re-selecting a tab."
         )
       );
+      stopProgress(0);
     }, 60000);
 
     const isValidTime = (str) => /^(\d{1,2}):([0-5]?\d)$/.test(str);
@@ -319,6 +383,7 @@ function App() {
       dispatch(setLoading(false));
       return;
     }
+    startProgress(end - start);
 
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const tabId = tabs[0]?.id;
@@ -369,7 +434,7 @@ function App() {
       );
     });
   };
-
+//=========================================================================== HANDLE SEND (with timestamp validation and progress bar)
   const handleSend = () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const tabId = tabs[0]?.id;
@@ -396,8 +461,42 @@ function App() {
     });
   };
 
+  const handleGenerateAiSummary = () => {
+    if (!rawTranscript || rawTranscript.startsWith("❌")) {
+      setAiSummaryError("Please fetch a transcript before generating a summary.");
+      return;
+    }
+
+    setAiSummary(null);
+    setAiSummaryError("");
+    setAiSummaryLoading(true);
+
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+      const activeTab = tabs[0];
+
+      try {
+        const summary = await generateAiSummary(
+          {
+            transcript: rawTranscript,
+            title: activeTab?.title || "",
+            platform: detectPlatform(activeTab?.url || ""),
+            startTime: lastUsedStart || startTime,
+            endTime: lastUsedEnd || endTime,
+          },
+          authToken
+        );
+
+        setAiSummary(summary);
+      } catch (err) {
+        setAiSummaryError(err.message || "Failed to generate AI summary.");
+      } finally {
+        setAiSummaryLoading(false);
+      }
+    });
+  };
+
   return (
-    <div className="w-[320px] h-[500px] bg-gray-100 p-4">
+    <div className="w-[320px] h-[500px] bg-gray-100 p-4 overflow-y-auto">
       <SettingsPanel
         showSettings={showSettings}
         setShowSettings={setShowSettings}
@@ -487,6 +586,25 @@ function App() {
               <div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_6px_rgba(34,197,94,0.8)]" />
             </div>
           </div>
+          {loading && (
+            <div className="mt-3">
+              <div className="text-sm mb-2"></div>
+              <div className="w-[250px] mx-auto">
+                <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 transition-all duration-200 ease-out"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+
+                <div className="text-xs mt-2 opacity-80">
+                  {progress < 95
+                    ? `Working… ${Math.floor(progress)}%`
+                    : "Almost done…"}
+                </div>
+              </div>
+            </div>
+          )}
 
           <p className="text-sm text-gray-700 font-medium tracking-wide animate-pulse">
             Transcribing audio, please wait…
@@ -640,6 +758,41 @@ function App() {
           </label>
 
           <button
+            disabled={
+              aiSummaryLoading ||
+              !rawTranscript ||
+              rawTranscript.startsWith("❌")
+            }
+            onClick={handleGenerateAiSummary}
+            className="w-full py-2 px-4 mb-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-600 text-white font-bold rounded-lg shadow-md transition-all duration-200"
+          >
+            {aiSummaryLoading ? "Generating Summary..." : "Generate AI Summary"}
+          </button>
+
+          {aiSummaryError && (
+            <p className="text-xs text-red-600 font-semibold mb-3">
+              {aiSummaryError}
+            </p>
+          )}
+
+          {aiSummary && (
+            <div className="bg-white border border-gray-200 rounded-lg p-3 mb-3 shadow-sm">
+              <p className="text-sm font-bold text-gray-800 mb-1">
+                AI Summary
+              </p>
+              <p className="text-xs text-gray-700 whitespace-pre-wrap">
+                {aiSummary.summary}
+              </p>
+              <SummaryList title="Key Points" items={aiSummary.keyPoints} />
+              <SummaryList
+                title="Action Items"
+                items={aiSummary.actionItems}
+              />
+              <SummaryList title="Warnings" items={aiSummary.warnings} />
+            </div>
+          )}
+
+          <button
             disabled={!rawTranscript || rawTranscript.startsWith("❌")}
             onClick={() => {
               chrome.runtime.sendMessage({
@@ -651,7 +804,7 @@ function App() {
                 description, // 🛑 this must be pulled from useSelector!
               });
 
-              dispatch(setStatus("Fetching transcript..."));
+              dispatch(setStatus(""));
               dispatch(setLoading(true));
               setTimeout(() => {
                 refetch();
@@ -730,9 +883,18 @@ function App() {
 
           <button
             onClick={() => setShowUpgradeModal(false)}
-            className="w-full bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition"
+            className="w-full bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition mb-2"
           >
             Cancel
+          </button>
+          <button
+            onClick={() => {
+              setShowUpgradeModal(false);
+              continueTranscriptFlow(); // same flow, but user is unauthenticated → server treats it as demo
+            }}
+            className="block w-full text-center bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition mb-2"
+          >
+            Use Demo (1/day)
           </button>
         </div>
       )}

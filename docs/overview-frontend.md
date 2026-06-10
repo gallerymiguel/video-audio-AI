@@ -1912,3 +1912,387 @@ This keeps the **slider UI** and **typed timestamps** perfectly synchronized whi
 
 ---
 
+# 🔐 `handleLogout()` — What This Does and Why It Matters
+
+```js
+const handleLogout = () => {
+  localStorage.removeItem("token");
+  setAuthToken(null);
+  setShowAuthButton(true);
+};
+```
+
+---
+
+## 🧠 High-Level Purpose
+
+This function logs the user out of the Chrome extension **instantly**, without needing any backend call.
+
+GraphQL isn’t involved here — logout is handled entirely on the frontend by deleting the JWT from `localStorage`.
+
+---
+
+# 🔍 Line-by-Line Explanation
+
+### **1. Remove the JWT from localStorage**
+
+```js
+localStorage.removeItem("token");
+```
+
+Your app stores the logged-in user’s token in localStorage.
+When they log out, the very first step is to erase it so the frontend no longer thinks the user is authenticated.
+
+Without this step:
+
+* Apollo would keep sending the old token
+* Protected actions would still work
+* The UI would think the user is still logged in
+
+So this is the “official” logout mechanism.
+
+---
+
+### **2. Clear token from React state**
+
+```js
+setAuthToken(null);
+```
+
+Even though localStorage is cleared, the UI still needs to update **immediately**.
+
+By setting `authToken` to `null`:
+
+* All GraphQL queries that depend on `authToken` (subscription, usage count, profile, etc.) will **skip automatically**
+* Components that require authentication will **reactively hide**
+* Login UI reappears
+
+This ensures the extension responds instantly without reload.
+
+---
+
+### **3. Re-enable the login button**
+
+```js
+setShowAuthButton(true);
+```
+
+This updates your UI so the **“Login / Signup” button becomes visible again**.
+
+This is especially important because:
+
+* Your popup UI can be open in multiple states (settings, auth modal, transcript view)
+* React needs a deterministic way to switch back to the auth UI
+
+This state ensures that the top-left login button is shown again after logout.
+
+---
+
+# 🎯 Why This Function Is Needed
+
+Without this `handleLogout`:
+
+* The frontend would still think the user is logged in
+* Apollo would continue sending a stale or invalid JWT
+* Stripe subscription hooks would break
+* Usage count queries would fail or misrepresent data
+
+This tiny function maintains the **entire auth flow** of your Chrome extension:
+
+### ✔ Remove stored credentials
+
+### ✔ Trigger UI logout
+
+### ✔ Reset authenticated features
+
+### ✔ Restore login button
+
+---
+
+Here’s a clean, structured documentation section for **`continueTranscriptFlow()`**, written at the same quality level as your backend docs — clear, professional, and easy for an interviewer to read.
+
+---
+
+# ▶️ `continueTranscriptFlow()` — Initiate Transcript Fetch Flow
+
+```js
+const continueTranscriptFlow = () => {
+  if (loading) {
+    setTimestampError("⚡ Still fetching transcript… please wait!");
+    return;
+  }
+
+  setTimestampError("");
+  dispatch(setStatus("Fetching transcript..."));
+  dispatch(setLoading(true));
+  setHasConverted(true);
+  setShowAuthButton(false);
+
+  window._transcriptTimeout = setTimeout(() => {
+    dispatch(setLoading(false));
+    dispatch(
+      setStatus(
+        "❌ No response. Try refreshing the page or re-selecting a tab."
+      )
+    );
+  }, 60000);
+};
+```
+
+---
+
+# 🧠 High-Level Purpose
+
+This function kicks off the **entire transcript extraction process**.
+
+It:
+
+* Ensures only one extraction runs at a time
+* Updates global transcript UI state
+* Shows loading indicators
+* Hides the login button while work is happening
+* Sets a 60-second failsafe in case the background script never responds
+
+This creates a smooth, predictable UX for your Chrome extension.
+
+---
+
+# 🧩 Line-by-Line Breakdown
+
+---
+
+## 1. **Prevent double-triggering**
+
+```js
+if (loading) {
+  setTimestampError("⚡ Still fetching transcript… please wait!");
+  return;
+}
+```
+
+If the user clicks the button twice, or the UI tries to start another extraction while one is already running, this block stops everything and warns them.
+
+This protects:
+
+* chrome.runtime messaging
+* the Whisper server
+* your Stripe usage count
+* your background script
+
+---
+
+## 2. **Clear previous timestamp errors**
+
+```js
+setTimestampError("");
+```
+
+Ensures old error messages don’t linger on screen when starting a fresh request.
+
+---
+
+## 3. **Update transcript UI status**
+
+```js
+dispatch(setStatus("Fetching transcript..."));
+dispatch(setLoading(true));
+```
+
+These two Redux updates:
+
+* Show a spinner
+* Disable buttons
+* Update the top banner message
+
+This change spreads across the entire popup UI because everything references the Redux state.
+
+---
+
+## 4. **Record that the user triggered a conversion**
+
+```js
+setHasConverted(true);
+```
+
+This value is used later when determining whether:
+
+* Toasts should show
+* The “send to ChatGPT” button should appear
+* Usage count refetches should run
+
+---
+
+## 5. **Hide the auth button**
+
+```js
+setShowAuthButton(false);
+```
+
+Prevents the user from clicking “Login/Signup” mid-operation, which could break or restart the flow.
+
+---
+
+## 6. **Set a 60-second fail-safe**
+
+```js
+window._transcriptTimeout = setTimeout(() => {
+  dispatch(setLoading(false));
+  dispatch(
+    setStatus(
+      "❌ No response. Try refreshing the page or re-selecting a tab."
+    )
+  );
+}, 60000);
+```
+
+Sometimes Chrome API calls take too long or the background script fails.
+
+This timeout:
+
+* Stops the spinner
+* Shows a helpful error
+* Prevents the popup from hanging forever
+
+Without this, the extension could get stuck in a “loading forever” state.
+
+---
+
+# 🎯 Why This Function Matters
+
+`continueTranscriptFlow()` is the **front-end launch point** for the entire transcript pipeline:
+
+**Popup → Background Script → Content Script → Whisper Server → Popup**
+
+It ensures:
+
+* Clean UI transitions
+* No duplicate requests
+* A guaranteed timeout
+* A predictable start-state every time
+
+---
+
+# ▶️ Timestamp Validation Inside `continueTranscriptFlow()`
+
+```js
+const isValidTime = (str) => /^(\d{1,2}):([0-5]?\d)$/.test(str);
+if (!isValidTime(startTime) || !isValidTime(endTime)) {
+  setTimestampError("❌ Please enter timestamps in mm:ss format.");
+  dispatch(setLoading(false));
+  return;
+}
+
+const timeToSeconds = (t) => {
+  const [min, sec] = t.split(":").map(Number);
+  return min * 60 + sec;
+};
+```
+
+---
+
+# 🧠 High-Level Purpose
+
+This block ensures that the **user’s time range is valid** **before** allowing the extension to proceed.
+
+If timestamps are invalid:
+
+* Transcript extraction is stopped
+* No message is sent to the background script
+* No Whisper usage is consumed
+* The user sees a clear error message
+
+This protects your backend, Stripe usage, and prevents confusing errors later in the flow.
+
+---
+
+# 🧩 Part 1 — `isValidTime`: Format Validator
+
+```js
+const isValidTime = (str) => /^(\d{1,2}):([0-5]?\d)$/.test(str);
+```
+
+### ✔️ What this regex checks:
+
+* **Minutes**: 1–2 digits (`\d{1,2}`)
+* **Colon**: literal `:`
+* **Seconds**: 00–59
+
+  * `[0-5]?` ensures first digit is optional but must be 0–5 when present
+  * `\d` ensures second digit is a number
+
+### That means valid examples:
+
+* `0:00`
+* `05:32`
+* `12:59`
+* `3:07`
+
+Invalid:
+
+* `5:7`
+* `122:09`
+* `10:75`
+
+---
+
+# 🧩 Part 2 — Stop the Flow if Timestamps Are Invalid
+
+```js
+if (!isValidTime(startTime) || !isValidTime(endTime)) {
+  setTimestampError("❌ Please enter timestamps in mm:ss format.");
+  dispatch(setLoading(false));
+  return;
+}
+```
+
+### What happens here:
+
+* On invalid timestamps:
+
+  * ❌ A clear error appears
+  * ⏹ Loading indicator stops
+  * ⛔ Flow is aborted before wasting any resources
+
+This is exactly what a polished extension should do — fail early, fail cleanly.
+
+---
+
+# 🧩 Part 3 — Convert Time to Seconds
+
+```js
+const timeToSeconds = (t) => {
+  const [min, sec] = t.split(":").map(Number);
+  return min * 60 + sec;
+};
+```
+
+This helper converts `"mm:ss"` into an integer number of seconds.
+
+### Example:
+
+```
+"01:30" → 90
+"10:05" → 605
+"00:45" → 45
+```
+
+This becomes extremely important when:
+
+* Comparing timestamp ranges
+* Passing numeric values to background/content scripts
+* Slicing recorded Instagram audio
+* Validating the user didn’t exceed the video length
+
+---
+
+# 🎯 Why This Is Important 
+
+Before triggering a transcript extraction, I validate user timestamps using a regex to ensure they're in `mm:ss` format. If invalid, the UI immediately informs the user and aborts the async workflow. Once validated, I convert the timestamps to seconds so they can be used consistently across the extension’s background script, content script, and Whisper server.”
+
+That shows:
+
+* input validation
+* graceful error handling
+* security-minded resource protection
+* clean state management
+

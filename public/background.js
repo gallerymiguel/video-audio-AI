@@ -103,7 +103,7 @@ chrome.runtime.onMessage.addListener((request, sender) => {
 
     return;
   }
-
+//=========================================================================
   // ─── 3) SEND_TRANSCRIPT_TO_CHATGPT branch ───────────────────
   if (request.type === "SEND_TRANSCRIPT_TO_CHATGPT") {
 
@@ -133,6 +133,7 @@ chrome.runtime.onMessage.addListener((request, sender) => {
       ja: "Japanese",
       ko: "Korean",
     };
+
 
     // 3) “Just summarize” prompts
     const summaryPrompts = {
@@ -207,7 +208,7 @@ chrome.runtime.onMessage.addListener((request, sender) => {
       },
       args: [prompt],
     });
-
+//================================================================================
     // 7) Let popup know we’re done
     chrome.runtime.sendMessage({
       type: "YOUTUBE_TRANSCRIPT_DONE",

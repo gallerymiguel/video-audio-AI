@@ -3,11 +3,12 @@ import { createSlice } from "@reduxjs/toolkit";
 const transcriptSlice = createSlice({
   name: "transcript",
   initialState: {
-    status: "",        // For messages like "Fetching..." or "Ready!"
-    loading: false,    // For spinners
-    transcript: "",    // The raw transcript text
-    charCount: null,   // How long the transcript is
-    description: "",  // The video description text
+    status: "", // For messages like "Fetching..." or "Ready!"
+    loading: false, // For spinners
+    transcript: "", // The raw transcript text
+    charCount: null, // How long the transcript is
+    description: "", // The video description text
+    phase: "IDLE", // Can be IDLE, PROCESSING, COMPLETED, ERROR
   },
   reducers: {
     setStatus: (state, action) => {
@@ -26,9 +27,19 @@ const transcriptSlice = createSlice({
     },
     setDescription: (state, action) => {
       state.description = action.payload;
-    },    
+    },
+    setPhase(state, action) {
+      state.phase = action.payload;
+    },
   },
 });
 
-export const { setStatus, setLoading, setTranscript, clearTranscript, setDescription, } = transcriptSlice.actions;
+export const {
+  setStatus,
+  setLoading,
+  setTranscript,
+  clearTranscript,
+  setDescription,
+  setPhase,
+} = transcriptSlice.actions;
 export default transcriptSlice.reducer;

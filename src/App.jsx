@@ -4,7 +4,6 @@ import {
   setStatus,
   setLoading,
   setTranscript,
-  clearTranscript,
   setDescription,
 } from "./transcriptSlice";
 import AuthPage from "./components/AuthPage.jsx";
@@ -14,7 +13,6 @@ import useSubscriptionStatus, {
 import useUsageCount from "./hooks/useUsageCount";
 import SettingsPanel from "./components/SettingsPanel";
 import Toast from "./components/Toast";
-import ConfirmModal from "./components/ConfirmModal";
 import { generateAiSummary } from "./api/aiSummary";
 
 const styleTag = document.createElement("style");
@@ -102,7 +100,6 @@ function App() {
   const {
     isSubscribed,
     loading: subLoading,
-    error,
     refetch,
   } = useSubscriptionStatus(authToken);
   const { initiateCheckout, loading: checkoutLoading } = useStartSubscription();
@@ -112,9 +109,8 @@ function App() {
     loading: usageLoading,
     refetch: refetchUsage,
   } = useUsageCount();
-  const [localUsage, setLocalUsage] = useState(usageCount);
+  const [, setLocalUsage] = useState(usageCount);
   const [toastMessage, setToastMessage] = useState(null);
-  const [confirmMessage, setConfirmMessage] = useState(null);
   // This function handles what happens when the user confirms the modal action
   const [progress, setProgress] = useState(0);
   const [aiSummary, setAiSummary] = useState(null);
@@ -123,11 +119,6 @@ function App() {
   const progressIntervalRef = useRef(null);
   const progressStartRef = useRef(0);
   const progressExpectedMsRef = useRef(0);
-
-  useEffect(() => {
-    if (authToken) {
-    }
-  }, [authToken]);
 
   useEffect(() => {
     const t = localStorage.getItem("token");
@@ -206,7 +197,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const listener = (message, sender, sendResponse) => {
+    const listener = (message) => {
       if (message.type === "TRANSCRIPT_READY") {
         if (message.description) {
           dispatch(setDescription(message.description));
@@ -241,7 +232,7 @@ function App() {
         dispatch(setLoading(false));
         dispatch(setStatus("✅ Transcript sent to ChatGPT!"));
 
-        refetch().then(({ data }) => {});
+        void refetch();
 
         setTimeout(() => dispatch(setStatus("")), 4000);
 
@@ -515,7 +506,6 @@ function App() {
         usageCount={usageCount}
         usageLoading={usageLoading}
         setToastMessage={setToastMessage}
-        setConfirmMessage={setConfirmMessage}
       />
       <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
 

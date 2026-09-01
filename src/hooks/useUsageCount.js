@@ -13,5 +13,3 @@ export default function useUsageCount() {
     refetch,
   };
 }
-
-module.exports = useUsageCount;

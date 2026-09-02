@@ -16,10 +16,10 @@ export default function SettingsPanel({
   usageLoading,
   setToastMessage,
 }) {
-  if (!showSettings) return null;
-
   const [confirmMessage, setConfirmMessage] = useState(null);
   const [cancelSubscription, { loading: cancelLoading }] = useMutation(CANCEL_SUBSCRIPTION);
+
+  if (!showSettings) return null;
 
   const handleCancelClick = () => {
     setConfirmMessage(
@@ -32,7 +32,7 @@ export default function SettingsPanel({
     try {
       const res = await cancelSubscription();
       setToastMessage(res.data.cancelSubscription);
-    } catch (err) {
+    } catch {
       setToastMessage("Error cancelling subscription");
     }
   };
@@ -76,7 +76,7 @@ export default function SettingsPanel({
                   try {
                     await initiateCheckout();
                     setToastMessage("Redirecting to payment page...");
-                  } catch (err) {
+                  } catch {
                     setToastMessage("Error starting subscription");
                   }
                 }}

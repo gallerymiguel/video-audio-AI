@@ -1,4 +1,4 @@
-import { useQuery, useApolloClient } from "@apollo/client";
+import { useQuery } from "@apollo/client";
 import { CHECK_SUBSCRIPTION_STATUS } from "../graphql/queries";
 import { useEffect } from "react";
 import { START_SUBSCRIPTION } from "../graphql/mutations";

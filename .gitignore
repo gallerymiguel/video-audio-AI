@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist.zip
+*.pem
 *.local
 
 # Editor directories and files
@@ -24,4 +26,3 @@ dist-ssr
 *.sw?
 .env
 .env.*
-

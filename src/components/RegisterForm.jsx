@@ -4,7 +4,7 @@ import { REGISTER_MUTATION } from "../graphql/mutations";
 
 const RegisterForm = () => {
   const [formData, setFormData] = useState({ email: "", password: "" });
-  const [register, { loading, error, data }] = useMutation(REGISTER_MUTATION);
+  const [register, { loading, error }] = useMutation(REGISTER_MUTATION);
 
   const handleChange = (e) => {
     setFormData((prev) => ({
